@@ -46,17 +46,18 @@ def list_chats() -> None:
 
 
 def last_messages() -> list:
+    # Every message in a self-chat is "from me", so the bridge tells its own
+    # replies apart from Elijah's texts by matching the text.
     script = (
         'tell application "Messages"\n'
         'set out to ""\n'
         'repeat with m in (messages of chat "' + CHAT_ID + '")\n'
         'set mid to id of m as text\n'
-        'set mfrom to is from me of m as text\n'
         'set mtext to ""\n'
         'try\n'
         'set mtext to (text of m) as text\n'
         'end try\n'
-        'set out to out & mid & "@@" & mfrom & "@@" & mtext & "###"\n'
+        'set out to out & mid & "@@" & mtext & "###"\n'
         'end repeat\n'
         'return out\n'
         'end tell'
@@ -65,11 +66,10 @@ def last_messages() -> list:
     messages = []
     for entry in [e for e in raw.split("###") if e.strip()]:
         parts = entry.split("@@")
-        if len(parts) >= 3:
+        if len(parts) >= 2:
             messages.append({
                 "id": parts[0].strip(),
-                "from_me": parts[1].strip() == "true",
-                "text": "@@".join(parts[2:]),
+                "text": "@@".join(parts[1:]),
             })
     return messages
 
@@ -142,7 +142,7 @@ def main() -> None:
                 if message["id"] in seen:
                     continue
                 text = message["text"].strip()
-                if message["from_me"] and text in sent_replies:
+                if text in sent_replies:
                     # That was the bridge talking, not you.
                     seen.add(message["id"])
                     continue
