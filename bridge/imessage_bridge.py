@@ -64,11 +64,31 @@ def resolve_chat_id() -> str:
     return ""
 
 
+def resolve_snippet() -> str:
+    # Some macOS builds refuse the direct `chat "id"` lookup, so resolve the
+    # chat by matching its id instead.
+    return (
+        'set theChat to missing value\n'
+        'try\n'
+        'set theChat to 1st chat whose id is "' + CHAT_ID + '"\n'
+        'end try\n'
+        'if theChat is missing value then\n'
+        'repeat with c in (every chat)\n'
+        'if (id of c as text) is "' + CHAT_ID + '" then\n'
+        'set theChat to c\n'
+        'exit repeat\n'
+        'end if\n'
+        'end repeat\n'
+        'end if\n'
+        'if theChat is missing value then error number -1728\n'
+    )
+
+
 def last_messages() -> list:
     script = (
         'tell application "Messages"\n'
-        'set theChat to chat "' + CHAT_ID + '"\n'
-        'set out to ""\n'
+        + resolve_snippet()
+        + 'set out to ""\n'
         'repeat with m in (messages of theChat)\n'
         'set mid to id of m as text\n'
         'set mtext to ""\n'
@@ -94,9 +114,13 @@ def last_messages() -> list:
 
 def send(text: str) -> None:
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
-    osascript(
-        'tell application "Messages" to send "' + escaped + '" to chat "' + CHAT_ID + '"'
+    script = (
+        'tell application "Messages"\n'
+        + resolve_snippet()
+        + 'send "' + escaped + '" to theChat\n'
+        'end tell'
     )
+    osascript(script)
 
 
 # ---------- llama ----------
