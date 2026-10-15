@@ -1,1 +1,272 @@
-IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiIKaU1lc3NhZ2UgYnJpZGdlLCBzZWxmLXRleHQgZWRpdGlvbi4gWW91IHRleHQgeW91ciBvd24gQXBwbGUgSUQgYWRkcmVzcyBsaWtlIGEKY29udGFjdCwgYW5kIGxsYW1hIDMuMSBvbiB0aGlzIE1hYyBhbnN3ZXJzIGluIHRoYXQgc2FtZSBjaGF0LiBObyBzZWNvbmQKYWNjb3VudCBuZWVkZWQ7IHRoZSBicmlkZ2UgdGVsbHMgaXRzIG93biByZXBsaWVzIGFwYXJ0IGZyb20geW91cnMgYnkgdGV4dC4KClJlYWRpbmcgZ29lcyBzdHJhaWdodCB0aHJvdWdoIHRoZSBNZXNzYWdlcyBkYXRhYmFzZSAobWFjT1MgbG9ja2VkIGNoYXQgcmVhZHMKYXdheSBmcm9tIEFwcGxlU2NyaXB0KSwgc28gVGVybWluYWwgbmVlZHMgRnVsbCBEaXNrIEFjY2Vzcy4gVGhlIGNvbnZlcnNhdGlvbgppcyBzYXZlZCB0byBtZW1vcnkuanNvbiBuZXh0IHRvIHRoaXMgc2NyaXB0IGFuZCBob2xkcyBmb3Igc2V2ZW4gZGF5cywgc28gdGhlCm1vZGVsIGtlZXBzIGl0cyBtZW1vcnkgYWNyb3NzIHJlc3RhcnRzLgoKUnVuOiAgcHl0aG9uMyBpbWVzc2FnZV9icmlkZ2UucHkgY2hhdHMgICAjIGxpc3QgZXZlcnkgY2hhdCB0aGUgbWFjIGtub3dzCiAgICAgIHB5dGhvbjMgaW1lc3NhZ2VfYnJpZGdlLnB5ICAgICAgICAjIHN0YXJ0IHdhdGNoaW5nCiIiIgoKaW1wb3J0IGpzb24KaW1wb3J0IG9zCmltcG9ydCBzcWxpdGUzCmltcG9ydCBzdWJwcm9jZXNzCmltcG9ydCBzeXMKaW1wb3J0IHRpbWUKaW1wb3J0IHVybGxpYi5yZXF1ZXN0CgojIC0tLS0tLS0tLS0gc2V0dGluZ3MgLS0tLS0tLS0tLQpVU0VSX0hBTkRMRSA9ICIrMTcwNDI4MDA5NjgiICAjIHlvdXIgY2VsbDsgdGhlIHNlbGYtY2hhdCBpcyBmb3VuZCBmcm9tIHRoaXMKQ0hBVF9JRCA9ICIiICAgICAgICAgICAgICAgICAgIyBsZWZ0IGJsYW5rIG9uIHB1cnBvc2UsIGF1dG8tZGlzY292ZXJlZApPTExBTUFfVVJMID0gImh0dHA6Ly9sb2NhbGhvc3Q6MTE0MzQvdjEvY2hhdC9jb21wbGV0aW9ucyIKTU9ERUwgPSAibGxhbWEzLjEiClNZU1RFTV9QUk9NUFQgPSAiIiAgICAgICAjIG9wdGlvbmFsLCBlLmcuICJZb3UgYXJlIE5PVkEsIGEgZHJ5LXdpdHRlZCBzaGlwYm9hcmQgQUkuIgpNRU1PUllfREFZUyA9IDcgICAgICAgICAgIyBob3cgbG9uZyB0aGUgbW9kZWwgcmVtZW1iZXJzIHRoZSBjb252ZXJzYXRpb24KTUFYX0NPTlRFWFRfTUVTU0FHRVMgPSAyMDAKRUNIT19XSU5ET1dfU0VDT05EUyA9IDIwICMgY29waWVzIG9mIHlvdXIgdGV4dCBsYW5kaW5nIHJpZ2h0IGFmdGVyIGEgcmVwbHkgYXJlIGlnbm9yZWQKUE9MTF9TRUNPTkRTID0gMwpNRU1PUllfRklMRSA9IG9zLnBhdGguam9pbihvcy5wYXRoLmRpcm5hbWUob3MucGF0aC5hYnNwYXRoKF9fZmlsZV9fKSksICJtZW1vcnkuanNvbiIpCk1FU1NBR0VfREIgPSBvcy5wYXRoLmV4cGFuZHVzZXIoIn4vTGlicmFyeS9NZXNzYWdlcy9jaGF0LmRiIikKCiMgLS0tLS0tLS0tLSBtZXNzYWdlIHJlYWRpbmcgKGRhdGFiYXNlKSAtLS0tLS0tLS0tCgpkZWYgbGFzdF9tZXNzYWdlcyhsaW1pdDogaW50ID0gNDApIC0+IGxpc3Q6CiAgICBjb25uZWN0aW9uID0gc3FsaXRlMy5jb25uZWN0KAogICAgICAgICJmaWxlOiIgKyBNRVNTQUdFX0RCICsgIj9tb2RlPXJvIiwgdXJpPVRydWUsIHRpbWVvdXQ9NQogICAgKQogICAgdHJ5OgogICAgICAgIHJvd3MgPSBjb25uZWN0aW9uLmV4ZWN1dGUoCiAgICAgICAgICAgICJTRUxFQ1QgbS5ST1dJRCwgbS50ZXh0IEZST00gbWVzc2FnZSBtICIKICAgICAgICAgICAgIkpPSU4gY2hhdF9tZXNzYWdlX2pvaW4gY21qIE9OIGNtai5tZXNzYWdlX2lkID0gbS5ST1dJRCAiCiAgICAgICAgICAgICJKT0lOIGNoYXQgYyBPTiBjLlJPV0lEID0gY21qLmNoYXRfaWQgIgogICAgICAgICAgICAiV0hFUkUgKGMuY2hhdF9pZGVudGlmaWVyID0gPyBPUiBjLmNoYXRfaWRlbnRpZmllciA9ICdFOicgfHwgPyAiCiAgICAgICAgICAgICIgICBPUiBjLmNoYXRfaWRlbnRpZmllciA9ICcrMScgfHwgPyBPUiBjLmNoYXRfaWRlbnRpZmllciA9ICcxJyB8fCA/KSAiCiAgICAgICAgICAgICJBTkQgbS5pc19mcm9tX21lID0gMSAiCiAgICAgICAgICAgICJPUkRFUiBCWSBtLlJPV0lEIERFU0MgTElNSVQgPyIsCiAgICAgICAgICAgIChVU0VSX0hBTkRMRSwgVVNFUl9IQU5ETEUsIFVTRVJfSEFORExFLCBVU0VSX0hBTkRMRSwgbGltaXQpLAogICAgICAgICkuZmV0Y2hhbGwoKQogICAgZmluYWxseToKICAgICAgICBjb25uZWN0aW9uLmNsb3NlKCkKICAgIG1lc3NhZ2VzID0gWwogICAgICAgIHsiaWQiOiBzdHIocm93WzBdKSwgInRleHQiOiByb3dbMV19CiAgICAgICAgZm9yIHJvdyBpbiByb3dzCiAgICAgICAgaWYgcm93WzFdIGlzIG5vdCBOb25lIGFuZCBzdHIocm93WzFdKS5zdHJpcCgpCiAgICBdCiAgICByZXR1cm4gbGlzdChyZXZlcnNlZChtZXNzYWdlcykpCgojIC0tLS0tLS0tLS0gc2VuZGluZyAoQXBwbGVTY3JpcHQpIC0tLS0tLS0tLS0KCmRlZiBvc2FzY3JpcHQoc2NyaXB0OiBzdHIpIC0+IHN0cjoKICAgIHJlc3VsdCA9IHN1YnByb2Nlc3MucnVuKAogICAgICAgIFsib3Nhc2NyaXB0IiwgIi1lIiwgc2NyaXB0XSwKICAgICAgICBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUsIHRpbWVvdXQ9NjAsCiAgICApCiAgICBpZiByZXN1bHQucmV0dXJuY29kZSAhPSAwOgogICAgICAgIHJhaXNlIFJ1bnRpbWVFcnJvcihyZXN1bHQuc3RkZXJyLnN0cmlwKCkgb3IgIm9zYXNjcmlwdCBmYWlsZWQiKQogICAgcmV0dXJuIHJlc3VsdC5zdGRvdXQuc3RyaXAoKQoKCmRlZiBhbGxfY2hhdF9pZHMoKSAtPiBsaXN0OgogICAgcmF3ID0gb3Nhc2NyaXB0KCd0ZWxsIGFwcGxpY2F0aW9uICJNZXNzYWdlcyIgdG8gZ2V0IGlkIG9mIGV2ZXJ5IGNoYXQnKQogICAgcmV0dXJuIFt4LnN0cmlwKCkgZm9yIHggaW4gcmF3LnNwbGl0KCIsIikgaWYgeC5zdHJpcCgpXQoKCmRlZiBsaXN0X2NoYXRzKCkgLT4gTm9uZToKICAgIGlkcyA9IGFsbF9jaGF0X2lkcygpCiAgICBuYW1lc19yYXcgPSBvc2FzY3JpcHQoJ3RlbGwgYXBwbGljYXRpb24gIk1lc3NhZ2VzIiB0byBnZXQgbmFtZSBvZiBldmVyeSBjaGF0JykKICAgIG5hbWVzID0gW3guc3RyaXAoKSBmb3IgeCBpbiBuYW1lc19yYXcuc3BsaXQoIiwiKV0KICAgIGZvciBpbmRleCwgY2hhdF9pZCBpbiBlbnVtZXJhdGUoaWRzKToKICAgICAgICBuYW1lID0gbmFtZXNbaW5kZXhdIGlmIGluZGV4IDwgbGVuKG5hbWVzKSBhbmQgbmFtZXNbaW5kZXhdIGVsc2UgIihubyBuYW1lKSIKICAgICAgICBwcmludChuYW1lLCAiLT4iLCBjaGF0X2lkKQoKCmRlZiByZXNvbHZlX2NoYXRfaWQoKSAtPiBzdHI6CiAgICBpZiBDSEFUX0lELnN0cmlwKCk6CiAgICAgICAgcmV0dXJuIENIQVRfSUQuc3RyaXAoKQogICAgZm9yIGNoYXRfaWQgaW4gYWxsX2NoYXRfaWRzKCk6CiAgICAgICAgaWYgVVNFUl9IQU5ETEUgaW4gY2hhdF9pZDoKICAgICAgICAgICAgcmV0dXJuIGNoYXRfaWQKICAgIHJldHVybiAiIgoKCmRlZiByZXNvbHZlX3NuaXBwZXQoKSAtPiBzdHI6CiAgICAjIFNvbWUgbWFjT1MgYnVpbGRzIHJlZnVzZSB0aGUgZGlyZWN0IGBjaGF0ICJpZCJgIGxvb2t1cCwgc28gcmVzb2x2ZSB0aGUKICAgICMgY2hhdCBieSBtYXRjaGluZyBpdHMgaWQgaW5zdGVhZC4KICAgIHJldHVybiAoCiAgICAgICAgJ3NldCB0aGVDaGF0IHRvIG1pc3NpbmcgdmFsdWVcbicKICAgICAgICAndHJ5XG4nCiAgICAgICAgJ3NldCB0aGVDaGF0IHRvIDFzdCBjaGF0IHdob3NlIGlkIGlzICInICsgQ0hBVF9JRCArICciXG4nCiAgICAgICAgJ2VuZCB0cnlcbicKICAgICAgICAnaWYgdGhlQ2hhdCBpcyBtaXNzaW5nIHZhbHVlIHRoZW5cbicKICAgICAgICAncmVwZWF0IHdpdGggYyBpbiAoZXZlcnkgY2hhdClcbicKICAgICAgICAnaWYgKGlkIG9mIGMgYXMgdGV4dCkgaXMgIicgKyBDSEFUX0lEICsgJyIgdGhlblxuJwogICAgICAgICdzZXQgdGhlQ2hhdCB0byBjXG4nCiAgICAgICAgJ2V4aXQgcmVwZWF0XG4nCiAgICAgICAgJ2VuZCBpZlxuJwogICAgICAgICdlbmQgcmVwZWF0XG4nCiAgICAgICAgJ2VuZCBpZlxuJwogICAgICAgICdpZiB0aGVDaGF0IGlzIG1pc3NpbmcgdmFsdWUgdGhlbiBlcnJvciBudW1iZXIgLTE3MjhcbicKICAgICkKCgpkZWYgc2VuZCh0ZXh0OiBzdHIpIC0+IE5vbmU6CiAgICBlc2NhcGVkID0gdGV4dC5yZXBsYWNlKCJcXCIsICJcXFxcIikucmVwbGFjZSgnIicsICdcXCInKQogICAgc2NyaXB0ID0gKAogICAgICAgICd0ZWxsIGFwcGxpY2F0aW9uICJNZXNzYWdlcyJcbicKICAgICAgICArIHJlc29sdmVfc25pcHBldCgpCiAgICAgICAgKyAnc2VuZCAiJyArIGVzY2FwZWQgKyAnIiB0byB0aGVDaGF0XG4nCiAgICAgICAgJ2VuZCB0ZWxsJwogICAgKQogICAgb3Nhc2NyaXB0KHNjcmlwdCkKCgojIC0tLS0tLS0tLS0gbGxhbWEgLS0tLS0tLS0tLQoKZGVmIGFzayhoaXN0b3J5OiBsaXN0KSAtPiBzdHI6CiAgICB3aW5kb3cgPSBoaXN0b3J5Wy1NQVhfQ09OVEVYVF9NRVNTQUdFUzpdCiAgICBtZXNzYWdlcyA9IFtdCiAgICBpZiBTWVNURU1fUFJPTVBULnN0cmlwKCk6CiAgICAgICAgbWVzc2FnZXMuYXBwZW5kKHsicm9sZSI6ICJzeXN0ZW0iLCAiY29udGVudCI6IFNZU1RFTV9QUk9NUFQuc3RyaXAoKX0pCiAgICBtZXNzYWdlcy5leHRlbmQoCiAgICAgICAgeyJyb2xlIjogZW50cnlbInJvbGUiXSwgImNvbnRlbnQiOiBlbnRyeVsiY29udGVudCJdfSBmb3IgZW50cnkgaW4gd2luZG93CiAgICApCiAgICBib2R5ID0ganNvbi5kdW1wcyh7Im1vZGVsIjogTU9ERUwsICJtZXNzYWdlcyI6IG1lc3NhZ2VzLCAic3RyZWFtIjogRmFsc2V9KS5lbmNvZGUoKQogICAgcmVxdWVzdCA9IHVybGxpYi5yZXF1ZXN0LlJlcXVlc3QoCiAgICAgICAgT0xMQU1BX1VSTCwgZGF0YT1ib2R5LCBoZWFkZXJzPXsiQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL2pzb24ifQogICAgKQogICAgd2l0aCB1cmxsaWIucmVxdWVzdC51cmxvcGVuKHJlcXVlc3QsIHRpbWVvdXQ9NjAwKSBhcyByZXNwb25zZToKICAgICAgICBkYXRhID0ganNvbi5sb2FkKHJlc3BvbnNlKQogICAgcmV0dXJuIGRhdGFbImNob2ljZXMiXVswXVsibWVzc2FnZSJdWyJjb250ZW50Il0uc3RyaXAoKQoKCiMgLS0tLS0tLS0tLSBtZW1vcnkgLS0tLS0tLS0tLQoKZGVmIGtleV9vZih0ZXh0OiBzdHIpIC0+IHN0cjoKICAgIHJldHVybiAiICIuam9pbigodGV4dCBvciAiIikuc3BsaXQoKSkuY2FzZWZvbGQoKQoKCmRlZiBsb2FkX2hpc3RvcnkoKSAtPiBsaXN0OgogICAgaWYgbm90IG9zLnBhdGguZXhpc3RzKE1FTU9SWV9GSUxFKToKICAgICAgICByZXR1cm4gW10KICAgIHRyeToKICAgICAgICB3aXRoIG9wZW4oTUVNT1JZX0ZJTEUsICJyIiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZmlsZToKICAgICAgICAgICAgZGF0YSA9IGpzb24ubG9hZChmaWxlKQogICAgICAgIHJldHVybiBkYXRhIGlmIGlzaW5zdGFuY2UoZGF0YSwgbGlzdCkgZWxzZSBbXQogICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICByZXR1cm4gW10KCgpkZWYgcHJ1bmVfaGlzdG9yeShoaXN0b3J5OiBsaXN0KSAtPiBOb25lOgogICAgY3V0b2ZmID0gdGltZS50aW1lKCkgLSBNRU1PUllfREFZUyAqIDg2NDAwCiAgICBoaXN0b3J5WzpdID0gW2UgZm9yIGUgaW4gaGlzdG9yeSBpZiBlLmdldCgidHMiLCB0aW1lLnRpbWUoKSkgPj0gY3V0b2ZmXQoKCmRlZiBzYXZlX2hpc3RvcnkoaGlzdG9yeTogbGlzdCkgLT4gTm9uZToKICAgIHRyeToKICAgICAgICB3aXRoIG9wZW4oTUVNT1JZX0ZJTEUsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZmlsZToKICAgICAgICAgICAganNvbi5kdW1wKGhpc3RvcnksIGZpbGUsIGVuc3VyZV9hc2NpaT1GYWxzZSwgaW5kZW50PTEpCiAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGVycm9yOgogICAgICAgIHByaW50KCJjb3VsZCBub3Qgc2F2ZSBtZW1vcnk6IiwgZXJyb3IpCgoKIyAtLS0tLS0tLS0tIG1haW4gbG9vcCAtLS0tLS0tLS0tCgpkZWYgbWFpbigpIC0+IE5vbmU6CiAgICBnbG9iYWwgQ0hBVF9JRAoKICAgIGlmIG5vdCBvcy5wYXRoLmV4aXN0cyhNRVNTQUdFX0RCKToKICAgICAgICBwcmludCgiQ291bGRuJ3QgZmluZCB0aGUgTWVzc2FnZXMgZGF0YWJhc2UgYXQiLCBNRVNTQUdFX0RCKQogICAgICAgIHByaW50KCJHaXZlIFRlcm1pbmFsIEZ1bGwgRGlzayBBY2Nlc3MsIHRoZW4gcnVuIHRoaXMgYWdhaW4uIikKICAgICAgICBzeXMuZXhpdCgxKQogICAgdHJ5OgogICAgICAgIGxhc3RfbWVzc2FnZXMoMSkKICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZXJyb3I6CiAgICAgICAgcHJpbnQoImNvdWxkIG5vdCByZWFkIHRoZSBNZXNzYWdlcyBkYXRhYmFzZToiLCBlcnJvcikKICAgICAgICBwcmludCgiU3lzdGVtIFNldHRpbmdzID4gUHJpdmFjeSAmIFNlY3VyaXR5ID4gRnVsbCBEaXNrIEFjY2VzcywgYWRkIFRlcm1pbmFsLCIpCiAgICAgICAgcHJpbnQoInRoZW4gcXVpdCBhbmQgcmVvcGVuIFRlcm1pbmFsIGFuZCBydW4gdGhpcyBhZ2Fpbi4iKQogICAgICAgIHN5cy5leGl0KDEpCgogICAgdHJ5OgogICAgICAgIGNoYXRfaWQgPSByZXNvbHZlX2NoYXRfaWQoKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlcnJvcjoKICAgICAgICBwcmludCgiY291bGQgbm90IGxpc3QgY2hhdHM6IiwgZXJyb3IpCiAgICAgICAgc3lzLmV4aXQoMSkKICAgIGlmIG5vdCBjaGF0X2lkOgogICAgICAgIHByaW50KCJDb3VsZG4ndCBmaW5kIHlvdXIgc2VsZi1jaGF0IGZvciBzZW5kaW5nLiIpCiAgICAgICAgcHJpbnQoIlRleHQgeW91ciBvd24gbnVtYmVyIG9uY2UgaW4gTWVzc2FnZXMgc28gdGhlIGNoYXQgZXhpc3RzLCB0aGVuIHJ1biBhZ2Fpbi4iKQogICAgICAgIHByaW50KCJDaGF0IGlkcyBNZXNzYWdlcyBrbm93cyByaWdodCBub3c6IikKICAgICAgICBmb3IgZXhpc3RpbmcgaW4gYWxsX2NoYXRfaWRzKCk6CiAgICAgICAgICAgIHByaW50KGV4aXN0aW5nKQogICAgICAgIHN5cy5leGl0KDEpCiAgICBDSEFUX0lEID0gY2hhdF9pZAoKICAgIHByaW50KCJXYXRjaGluZyBjaGF0OiIsIENIQVRfSUQpCiAgICBwcmludCgiQ3RybC1DIHRvIHN0b3AuIikKCiAgICAjIEFueXRoaW5nIGFscmVhZHkgaW4gdGhlIGNoYXQgYmVmb3JlIHN0YXJ0dXAgc3RheXMgdW5hbnN3ZXJlZC4KICAgIHNlZW4gPSB7bVsiaWQiXSBmb3IgbSBpbiBsYXN0X21lc3NhZ2VzKCl9CiAgICBoaXN0b3J5ID0gbG9hZF9oaXN0b3J5KCkKICAgIHBydW5lX2hpc3RvcnkoaGlzdG9yeSkKICAgIGlmIGhpc3Rvcnk6CiAgICAgICAgcHJpbnQoInJlbWVtYmVyZWQgbWVzc2FnZXM6IiwgbGVuKGhpc3RvcnkpKQogICAgc2VudF9yZXBsaWVzOiBsaXN0ID0gW10gICAjIG5vcm1hbGl6ZWQgdGV4dHMgdGhlIGJyaWRnZSBpdHNlbGYgc2VudAogICAgbGFzdF91c2VyX2tleSA9ICIiCiAgICBsYXN0X3JlcGx5X2F0ID0gMC4wCgogICAgd2hpbGUgVHJ1ZToKICAgICAgICB0cnk6CiAgICAgICAgICAgIGZvciBtZXNzYWdlIGluIGxhc3RfbWVzc2FnZXMoOCk6CiAgICAgICAgICAgICAgICBpZiBtZXNzYWdlWyJpZCJdIGluIHNlZW46CiAgICAgICAgICAgICAgICAgICAgY29udGludWUKICAgICAgICAgICAgICAgIHRleHQgPSBtZXNzYWdlWyJ0ZXh0Il0uc3RyaXAoKQogICAgICAgICAgICAgICAgaWYgbm90IHRleHQ6CiAgICAgICAgICAgICAgICAgICAgY29udGludWUKICAgICAgICAgICAgICAgIGtleSA9IGtleV9vZih0ZXh0KQogICAgICAgICAgICAgICAgaWYga2V5IGluIHNlbnRfcmVwbGllczoKICAgICAgICAgICAgICAgICAgICAjIFRoYXQgd2FzIHRoZSBicmlkZ2UgdGFsa2luZywgbm90IHlvdS4KICAgICAgICAgICAgICAgICAgICBzZWVuLmFkZChtZXNzYWdlWyJpZCJdKQogICAgICAgICAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgICAgICAgICBpZiBrZXkgPT0gbGFzdF91c2VyX2tleSBhbmQgdGltZS50aW1lKCkgLSBsYXN0X3JlcGx5X2F0IDwgRUNIT19XSU5ET1dfU0VDT05EUzoKICAgICAgICAgICAgICAgICAgICAjIEEgY29weSBvZiB5b3VyIHRleHQgbGFuZGluZyByaWdodCBhZnRlciB0aGUgcmVwbHkuCiAgICAgICAgICAgICAgICAgICAgc2Vlbi5hZGQobWVzc2FnZVsiaWQiXSkKICAgICAgICAgICAgICAgICAgICBjb250aW51ZQogICAgICAgICAgICAgICAgc2Vlbi5hZGQobWVzc2FnZVsiaWQiXSkKICAgICAgICAgICAgICAgIGhpc3RvcnkuYXBwZW5kKHsicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiB0ZXh0LCAidHMiOiB0aW1lLnRpbWUoKX0pCiAgICAgICAgICAgICAgICBwcnVuZV9oaXN0b3J5KGhpc3RvcnkpCiAgICAgICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICAgICAgcmVwbHkgPSBhc2soaGlzdG9yeSkKICAgICAgICAgICAgICAgIGV4Y2VwdCBFeGNlcHRpb24gYXMgZXJyb3I6CiAgICAgICAgICAgICAgICAgICAgcmVwbHkgPSAiKG1vZGVsIGVycm9yOiAiICsgc3RyKGVycm9yKSArICIpIgogICAgICAgICAgICAgICAgaWYgcmVwbHk6CiAgICAgICAgICAgICAgICAgICAgaGlzdG9yeS5hcHBlbmQoeyJyb2xlIjogImFzc2lzdGFudCIsICJjb250ZW50IjogcmVwbHksICJ0cyI6IHRpbWUudGltZSgpfSkKICAgICAgICAgICAgICAgICAgICBwcnVuZV9oaXN0b3J5KGhpc3RvcnkpCiAgICAgICAgICAgICAgICAgICAgc2F2ZV9oaXN0b3J5KGhpc3RvcnkpCiAgICAgICAgICAgICAgICAgICAgc2VudF9yZXBsaWVzLmFwcGVuZChrZXlfb2YocmVwbHkpKQogICAgICAgICAgICAgICAgICAgIGRlbCBzZW50X3JlcGxpZXNbOi0yMF0KICAgICAgICAgICAgICAgICAgICBzZW5kKHJlcGx5KQogICAgICAgICAgICAgICAgICAgIGxhc3RfdXNlcl9rZXkgPSBrZXkKICAgICAgICAgICAgICAgICAgICBsYXN0X3JlcGx5X2F0ID0gdGltZS50aW1lKCkKICAgICAgICAgICAgICAgICAgICAjIE1hcmsgb3VyIG93biByZXBseSdzIHJvdyBzZWVuIGFzIHNvb24gYXMgaXQgbGFuZHMuCiAgICAgICAgICAgICAgICAgICAgcmVwbHlfa2V5ID0ga2V5X29mKHJlcGx5KQogICAgICAgICAgICAgICAgICAgIGZvciBfIGluIHJhbmdlKDMpOgogICAgICAgICAgICAgICAgICAgICAgICB0aW1lLnNsZWVwKDEpCiAgICAgICAgICAgICAgICAgICAgICAgIGZvciByZWNlbnQgaW4gbGFzdF9tZXNzYWdlcygzKToKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGlmIGtleV9vZihyZWNlbnRbInRleHQiXSkgPT0gcmVwbHlfa2V5OgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHNlZW4uYWRkKHJlY2VudFsiaWQiXSkKICAgICAgICAgICAgICAgICAgICBwcmludCgicmVwbGllZDoiLCByZXBseVs6ODBdLnJlcGxhY2UoIlxuIiwgIiAiKSkKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGVycm9yOgogICAgICAgICAgICBwcmludCgiZXJyb3I6IiwgZXJyb3IpCiAgICAgICAgdGltZS5zbGVlcChQT0xMX1NFQ09ORFMpCgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIGlmIGxlbihzeXMuYXJndikgPiAxIGFuZCBzeXMuYXJndlsxXSA9PSAiY2hhdHMiOgogICAgICAgIGxpc3RfY2hhdHMoKQogICAgZWxzZToKICAgICAgICBtYWluKCkK
+#!/usr/bin/env python3
+"""
+iMessage bridge, self-text edition. You text your own Apple ID address like a
+contact, and llama 3.1 on this Mac answers in that same chat. No second
+account needed; the bridge tells its own replies apart from yours by text.
+
+Reading goes straight through the Messages database (macOS locked chat reads
+away from AppleScript), so Terminal needs Full Disk Access. The conversation
+is saved to memory.json next to this script and holds for seven days, so the
+model keeps its memory across restarts.
+
+Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
+      python3 imessage_bridge.py        # start watching
+"""
+
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import time
+import urllib.request
+
+# ---------- settings ----------
+USER_HANDLE = "+17042800968"  # your cell; the self-chat is found from this
+CHAT_ID = ""                  # left blank on purpose, auto-discovered
+OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
+MODEL = "llama3.1"
+SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
+MEMORY_DAYS = 7          # how long the model remembers the conversation
+MAX_CONTEXT_MESSAGES = 200
+ECHO_WINDOW_SECONDS = 20 # copies of your text landing right after a reply are ignored
+POLL_SECONDS = 3
+MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
+MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
+
+# ---------- message reading (database) ----------
+
+def last_messages(limit: int = 40) -> list:
+    connection = sqlite3.connect(
+        "file:" + MESSAGE_DB + "?mode=ro", uri=True, timeout=5
+    )
+    try:
+        rows = connection.execute(
+            "SELECT m.ROWID, m.text FROM message m "
+            "JOIN chat_message_join cmj ON cmj.message_id = m.ROWID "
+            "JOIN chat c ON c.ROWID = cmj.chat_id "
+            "WHERE (c.chat_identifier = ? OR c.chat_identifier = 'E:' || ? "
+            "   OR c.chat_identifier = '+1' || ? OR c.chat_identifier = '1' || ?) "
+            "AND m.is_from_me = 1 "
+            "ORDER BY m.ROWID DESC LIMIT ?",
+            (USER_HANDLE, USER_HANDLE, USER_HANDLE, USER_HANDLE, limit),
+        ).fetchall()
+    finally:
+        connection.close()
+    messages = [
+        {"id": str(row[0]), "text": row[1]}
+        for row in rows
+        if row[1] is not None and str(row[1]).strip()
+    ]
+    return list(reversed(messages))
+
+# ---------- sending (AppleScript) ----------
+
+def osascript(script: str) -> str:
+    result = subprocess.run(
+        ["osascript", "-e", script],
+        capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "osascript failed")
+    return result.stdout.strip()
+
+
+def all_chat_ids() -> list:
+    raw = osascript('tell application "Messages" to get id of every chat')
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def list_chats() -> None:
+    ids = all_chat_ids()
+    names_raw = osascript('tell application "Messages" to get name of every chat')
+    names = [x.strip() for x in names_raw.split(",")]
+    for index, chat_id in enumerate(ids):
+        name = names[index] if index < len(names) and names[index] else "(no name)"
+        print(name, "->", chat_id)
+
+
+def resolve_chat_id() -> str:
+    if CHAT_ID.strip():
+        return CHAT_ID.strip()
+    for chat_id in all_chat_ids():
+        if USER_HANDLE in chat_id:
+            return chat_id
+    return ""
+
+
+def resolve_snippet() -> str:
+    # Some macOS builds refuse the direct `chat "id"` lookup, so resolve the
+    # chat by matching its id instead.
+    return (
+        'set theChat to missing value\n'
+        'try\n'
+        'set theChat to 1st chat whose id is "' + CHAT_ID + '"\n'
+        'end try\n'
+        'if theChat is missing value then\n'
+        'repeat with c in (every chat)\n'
+        'if (id of c as text) is "' + CHAT_ID + '" then\n'
+        'set theChat to c\n'
+        'exit repeat\n'
+        'end if\n'
+        'end repeat\n'
+        'end if\n'
+        'if theChat is missing value then error number -1728\n'
+    )
+
+
+def send(text: str) -> None:
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    script = (
+        'tell application "Messages"\n'
+        + resolve_snippet()
+        + 'send "' + escaped + '" to theChat\n'
+        'end tell'
+    )
+    osascript(script)
+
+
+# ---------- llama ----------
+
+def ask(history: list) -> str:
+    window = history[-MAX_CONTEXT_MESSAGES:]
+    messages = []
+    if SYSTEM_PROMPT.strip():
+        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip()})
+    messages.extend(
+        {"role": entry["role"], "content": entry["content"]} for entry in window
+    )
+    body = json.dumps({"model": MODEL, "messages": messages, "stream": False}).encode()
+    request = urllib.request.Request(
+        OLLAMA_URL, data=body, headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(request, timeout=600) as response:
+        data = json.load(response)
+    return data["choices"][0]["message"]["content"].strip()
+
+
+# ---------- memory ----------
+
+def key_of(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def load_history() -> list:
+    if not os.path.exists(MEMORY_FILE):
+        return []
+    try:
+        with open(MEMORY_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def prune_history(history: list) -> None:
+    cutoff = time.time() - MEMORY_DAYS * 86400
+    history[:] = [e for e in history if e.get("ts", time.time()) >= cutoff]
+
+
+def save_history(history: list) -> None:
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as file:
+            json.dump(history, file, ensure_ascii=False, indent=1)
+    except Exception as error:
+        print("could not save memory:", error)
+
+
+# ---------- main loop ----------
+
+def main() -> None:
+    global CHAT_ID
+
+    if not os.path.exists(MESSAGE_DB):
+        print("Couldn't find the Messages database at", MESSAGE_DB)
+        print("Give Terminal Full Disk Access, then run this again.")
+        sys.exit(1)
+    try:
+        last_messages(1)
+    except Exception as error:
+        print("could not read the Messages database:", error)
+        print("System Settings > Privacy & Security > Full Disk Access, add Terminal,")
+        print("then quit and reopen Terminal and run this again.")
+        sys.exit(1)
+
+    try:
+        chat_id = resolve_chat_id()
+    except Exception as error:
+        print("could not list chats:", error)
+        sys.exit(1)
+    if not chat_id:
+        print("Couldn't find your self-chat for sending.")
+        print("Text your own number once in Messages so the chat exists, then run again.")
+        print("Chat ids Messages knows right now:")
+        for existing in all_chat_ids():
+            print(existing)
+        sys.exit(1)
+    CHAT_ID = chat_id
+
+    print("Watching chat:", CHAT_ID)
+    print("Ctrl-C to stop.")
+
+    # Anything already in the chat before startup stays unanswered.
+    seen = {m["id"] for m in last_messages()}
+    history = load_history()
+    prune_history(history)
+    if history:
+        print("remembered messages:", len(history))
+    sent_replies: list = []   # normalized texts the bridge itself sent
+    last_user_key = ""
+    last_reply_at = 0.0
+
+    while True:
+        try:
+            for message in last_messages(8):
+                if message["id"] in seen:
+                    continue
+                text = message["text"].strip()
+                if not text:
+                    continue
+                key = key_of(text)
+                if key in sent_replies:
+                    # That was the bridge talking, not you.
+                    seen.add(message["id"])
+                    continue
+                if key == last_user_key and time.time() - last_reply_at < ECHO_WINDOW_SECONDS:
+                    # A copy of your text landing right after the reply.
+                    seen.add(message["id"])
+                    continue
+                seen.add(message["id"])
+                history.append({"role": "user", "content": text, "ts": time.time()})
+                prune_history(history)
+                try:
+                    reply = ask(history)
+                except Exception as error:
+                    reply = "(model error: " + str(error) + ")"
+                if reply:
+                    history.append({"role": "assistant", "content": reply, "ts": time.time()})
+                    prune_history(history)
+                    save_history(history)
+                    sent_replies.append(key_of(reply))
+                    del sent_replies[:-20]
+                    send(reply)
+                    last_user_key = key
+                    last_reply_at = time.time()
+                    # Mark our own reply's row seen as soon as it lands.
+                    reply_key = key_of(reply)
+                    for _ in range(3):
+                        time.sleep(1)
+                        for recent in last_messages(3):
+                            if key_of(recent["text"]) == reply_key:
+                                seen.add(recent["id"])
+                    print("replied:", reply[:80].replace("\n", " "))
+        except Exception as error:
+            print("error:", error)
+        time.sleep(POLL_SECONDS)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "chats":
+        list_chats()
+    else:
+        main()
