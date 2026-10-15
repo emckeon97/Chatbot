@@ -1,44 +1,28 @@
 # Chatbot
 
-A fast, clean SwiftUI chat app for iOS that streams replies from a **local llama 3.1** server.
-
-## Features
-- Multiple conversations with a chat list, swipe to delete
-- Streaming token-by-token responses
-- Character personas for role-play, with presets included
-- Chat history saved between launches
-- Copy or share any reply straight into Messages via long-press
-- Configurable server address, model, temperature and system prompt
-- Stop button mid-generation, clean dark-friendly UI
-- No third-party dependencies
+A SwiftUI chat app for iPhone that talks to a local llama 3.1 server (Ollama or llama.cpp) over the OpenAI-compatible chat completions API. Multiple conversations, role-play personas, temperature control. Also runs on the Mac through Mac Catalyst.
 
 ## Build
-1. Open `Chatbot.xcodeproj` in Xcode 27 (or 16+).
-2. Pick an iOS 26+ simulator or your iPhone, press Run.
-3. First run on device: Xcode signs with your personal team automatically.
 
-## Connect your local model
-The app speaks the OpenAI-compatible API, so both servers below work:
+1. Clone the repo and open `Chatbot.xcodeproj` in Xcode.
+2. Pick an iPhone simulator and run. The deployment target is iOS 26.
 
-**Ollama (default)**
-```
-ollama pull llama3.1
-ollama serve        # listens on port 11434
-```
-In the app, set the server to `http://<your-mac-ip>:11434` when running on a real iPhone on the same Wi-Fi (on the Mac simulator, `http://localhost:11434` just works). Find your Mac IP in System Settings > Wi-Fi > Details.
+## Run it on the Mac
 
-**llama.cpp**
-```
-llama-server -m llama3.1.gguf --port 8080
-```
-Set the server to `http://<your-mac-ip>:8080`.
+The same target supports Mac Catalyst. In Xcode, choose **My Mac (Catalyst)** in the run destination next to the scheme, then run. The Mac app talks to `localhost:11434` directly, so just have `ollama serve` running on the Mac.
 
-Model name must match what the server knows (`llama3.1`, `llama3.1:8b-instruct-q4_K_M`, etc.).
+## Point it at your model server
 
-## Characters
-Settings > Characters lets you save personas, each with its own personality prompt. Tap the checkmark to make one active and the model stays in that role. Three starter characters ship in the box; edit or delete them freely.
+In Settings inside the app:
+- **Server URL**, default `http://localhost:11434` (Ollama). For llama.cpp use its `--host` address, the API path is the same OpenAI-compatible `/v1/chat/completions`.
+- On a real device, use your Mac's LAN address, and start Ollama with `OLLAMA_HOST=0.0.0.0 ollama serve` so it listens on the network.
+- **Model**, default `llama3.1`.
+- **Temperature**, how adventurous the model gets; around 0.8 for role-play, 0.3 for factual answers.
 
-## Notes
-- Local HTTP is allowed via the Info.plist local-networking exception, so no server changes needed.
-- Set a system prompt in Settings to shape the assistant's behavior when no character is active.
-- iOS gives third-party apps no direct access to iMessage; sharing into Messages happens through the share sheet instead.
+## iMessage bridge
+
+The `bridge` folder has a script that texts the model from your own Apple ID over iMessage. See `bridge/README.md`.
+
+## Personas
+
+Three presets ship in the app (Noir Detective, Starship AI, Grumpy Goblin) and you can add your own; a persona injects a system prompt and remembers its own temperature.
