@@ -4,10 +4,11 @@ iMessage bridge, self-text edition. You text your own Apple ID address like a
 contact, and llama 3.1 on this Mac answers in that same chat. No second
 account needed; the bridge tells its own replies apart from yours by text.
 
-The conversation is saved to memory.json next to this script, so the model
-keeps its memory across restarts.
+The script finds the self-chat by your address, no chat id needed. The
+conversation is saved to memory.json next to this script, so the model keeps
+its memory across restarts.
 
-Run:  python3 imessage_bridge.py chats   # list every chat id and name
+Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
       python3 imessage_bridge.py        # start watching
 """
 
@@ -19,7 +20,8 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-CHAT_ID = "iMessage;-;elimckeon97@icloud.com"   # Elijah's self-chat (verify with chats)
+USER_HANDLE = "elimckeon97@icloud.com"  # your address; the self-chat is found from this
+CHAT_ID = ""                            # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
@@ -39,14 +41,27 @@ def osascript(script: str) -> str:
     return result.stdout.strip()
 
 
+def all_chat_ids() -> list:
+    raw = osascript('tell application "Messages" to get id of every chat')
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
 def list_chats() -> None:
-    ids_raw = osascript('tell application "Messages" to get id of every chat')
+    ids = all_chat_ids()
     names_raw = osascript('tell application "Messages" to get name of every chat')
-    ids = [x.strip() for x in ids_raw.split(",") if x.strip()]
     names = [x.strip() for x in names_raw.split(",")]
     for index, chat_id in enumerate(ids):
         name = names[index] if index < len(names) and names[index] else "(no name)"
         print(name, "->", chat_id)
+
+
+def resolve_chat_id() -> str:
+    if CHAT_ID.strip():
+        return CHAT_ID.strip()
+    for chat_id in all_chat_ids():
+        if USER_HANDLE in chat_id:
+            return chat_id
+    return ""
 
 
 def last_messages() -> list:
@@ -124,10 +139,21 @@ def save_history(history: list) -> None:
 # ---------- main loop ----------
 
 def main() -> None:
-    if not CHAT_ID.strip():
-        print("Set CHAT_ID at the top of this file first.")
-        print("Run:  python3 imessage_bridge.py chats")
+    global CHAT_ID
+
+    try:
+        chat_id = resolve_chat_id()
+    except Exception as error:
+        print("could not list chats:", error)
         sys.exit(1)
+    if not chat_id:
+        print("Couldn't find your self-chat on this Mac.")
+        print("Chat ids Messages knows right now:")
+        for existing in all_chat_ids():
+            print(existing)
+        print("Open the self-chat once in Messages on the Mac, then run this again.")
+        sys.exit(1)
+    CHAT_ID = chat_id
 
     print("Watching chat:", CHAT_ID)
     print("Ctrl-C to stop.")
