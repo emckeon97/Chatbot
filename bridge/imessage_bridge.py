@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-iMessage bridge, self-text edition. You text your own Apple ID address like a
-contact, and llama 3.1 on this Mac answers in that same chat. No second
-account needed; the bridge tells its own replies apart from yours by text.
+iMessage bridge, two-account edition. Runs on a Mac logged in as a second
+Apple ID; you text that account from your iPhone like a normal contact, and
+the local model answers. Clean sender/receiver split -- no self-text
+loopback, no echo.
 
-Reading goes straight through the Messages database (macOS locked chat reads
-away from AppleScript), so Terminal needs Full Disk Access. The conversation
-is saved to memory.json next to this script and holds for seven days, so the
-model keeps its memory across restarts.
+USER_HANDLE is your main phone number (the sender). The bridge watches for
+incoming messages from you and replies in the same chat.
+
+Reading goes straight through the Messages database, so Terminal needs Full
+Disk Access. The conversation is saved to memory.json next to this script and
+holds for seven days, so the model keeps its memory across restarts.
 
 Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
       python3 imessage_bridge.py        # start watching
@@ -47,7 +50,7 @@ def last_messages(limit: int = 40) -> list:
             "JOIN chat c ON c.ROWID = cmj.chat_id "
             "WHERE (c.chat_identifier = ? OR c.chat_identifier = 'E:' || ? "
             "   OR c.chat_identifier = '+1' || ? OR c.chat_identifier = '1' || ?) "
-            "AND m.is_from_me = 1 "
+            "AND m.is_from_me = 0 "
             "ORDER BY m.ROWID DESC LIMIT ?",
             (USER_HANDLE, USER_HANDLE, USER_HANDLE, USER_HANDLE, limit),
         ).fetchall()
@@ -198,8 +201,8 @@ def main() -> None:
         print("could not list chats:", error)
         sys.exit(1)
     if not chat_id:
-        print("Couldn't find your self-chat for sending.")
-        print("Text your own number once in Messages so the chat exists, then run again.")
+        print("Couldn't find a chat with your number.")
+        print("Text this account once from your iPhone so the chat exists, then run again.")
         print("Chat ids Messages knows right now:")
         for existing in all_chat_ids():
             print(existing)
