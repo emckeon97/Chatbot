@@ -22,8 +22,8 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-USER_HANDLE = "elimckeon97@icloud.com"  # your address; the self-chat is found from this
-CHAT_ID = ""                            # left blank on purpose, auto-discovered
+USER_HANDLE = "+17042800968"  # your cell; the self-chat is found from this
+CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
@@ -46,8 +46,9 @@ def last_messages(limit: int = 40) -> list:
             "JOIN chat_message_join cmj ON cmj.message_id = m.ROWID "
             "JOIN chat c ON c.ROWID = cmj.chat_id "
             "WHERE c.chat_identifier = ? OR c.chat_identifier = 'E:' || ? "
+            "   OR c.chat_identifier = '+1' || ? OR c.chat_identifier = '1' || ? "
             "ORDER BY m.ROWID DESC LIMIT ?",
-            (USER_HANDLE, USER_HANDLE, limit),
+            (USER_HANDLE, USER_HANDLE, USER_HANDLE, USER_HANDLE, limit),
         ).fetchall()
     finally:
         connection.close()
@@ -197,10 +198,10 @@ def main() -> None:
         sys.exit(1)
     if not chat_id:
         print("Couldn't find your self-chat for sending.")
+        print("Text your own number once in Messages so the chat exists, then run again.")
         print("Chat ids Messages knows right now:")
         for existing in all_chat_ids():
             print(existing)
-        print("Open the self-chat once in Messages on the Mac, then run this again.")
         sys.exit(1)
     CHAT_ID = chat_id
 
