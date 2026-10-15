@@ -3,11 +3,13 @@
 A fast, clean SwiftUI chat app for iOS that streams replies from a **local llama 3.1** server.
 
 ## Features
+- Multiple conversations with a chat list, swipe to delete
 - Streaming token-by-token responses
 - Character personas for role-play, with presets included
 - Chat history saved between launches
+- Copy or share any reply straight into Messages via long-press
 - Configurable server address, model, temperature and system prompt
-- Stop button mid-generation, clear-chat, clean dark-friendly UI
+- Stop button mid-generation, clean dark-friendly UI
 - No third-party dependencies
 
 ## Build
@@ -39,3 +41,4 @@ Settings > Characters lets you save personas, each with its own personality prom
 ## Notes
 - Local HTTP is allowed via the Info.plist local-networking exception, so no server changes needed.
 - Set a system prompt in Settings to shape the assistant's behavior when no character is active.
+- iOS gives third-party apps no direct access to iMessage; sharing into Messages happens through the share sheet instead.

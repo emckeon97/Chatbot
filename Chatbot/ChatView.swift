@@ -1,54 +1,66 @@
 import SwiftUI
 
 struct ChatView: View {
-    @StateObject private var store = ChatStore()
+    @State private var conversationID: UUID?
+    @ObservedObject private var store = ChatStore.shared
     @State private var draft = ""
 
+    init(conversationID: UUID?) {
+        _conversationID = State(initialValue: conversationID)
+    }
+
+    private var conversation: Conversation? {
+        store.conversation(id: conversationID)
+    }
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if store.messages.isEmpty && !store.isGenerating {
-                    emptyState
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 10) {
-                            ForEach(store.messages) { message in
-                                MessageRow(message: message)
-                            }
-                            if store.isGenerating {
-                                MessageRow(message: ChatMessage(
-                                    role: .assistant,
-                                    content: store.streamingText.isEmpty ? "..." : store.streamingText
-                                ))
-                            }
+        VStack(spacing: 0) {
+            if (conversation?.messages.isEmpty ?? true) && !store.isGenerating {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(conversation?.messages ?? []) { message in
+                            MessageRow(message: message)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        if store.isGenerating && store.generatingIn == conversationID {
+                            MessageRow(message: ChatMessage(
+                                role: .assistant,
+                                content: store.streamingText.isEmpty ? "..." : store.streamingText
+                            ))
+                        }
                     }
-                    .defaultScrollAnchor(.bottom)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                 }
-                Divider()
-                inputBar
+                .defaultScrollAnchor(.bottom)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Chatbot")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        store.clear()
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward.circle")
-                    }
-                    .disabled(store.messages.isEmpty)
-                    NavigationLink {
-                        SettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
+            Divider()
+            inputBar
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(titleText)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    store.clearMessages(in: conversationID)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward.circle")
+                }
+                .disabled(conversation?.messages.isEmpty ?? true)
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape")
                 }
             }
         }
+    }
+
+    private var titleText: String {
+        if let title = conversation?.title, !title.isEmpty { return title }
+        return "Chatbot"
     }
 
     private var emptyState: some View {
@@ -71,7 +83,7 @@ struct ChatView: View {
                 .lineLimit(1...4)
                 .padding(10)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-            if store.isGenerating {
+            if store.isGenerating && store.generatingIn == conversationID {
                 Button {
                     store.stop()
                 } label: {
@@ -81,13 +93,13 @@ struct ChatView: View {
                 }
             } else {
                 Button {
-                    store.send(draft)
+                    conversationID = store.send(draft, in: conversationID)
                     draft = ""
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 26))
                 }
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(store.isGenerating || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(.horizontal, 12)
