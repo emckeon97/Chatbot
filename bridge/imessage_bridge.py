@@ -22,10 +22,10 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-USER_HANDLE = "+17042800968"  # your cell; the self-chat is found from this
+USER_HANDLE = "7042800968"  # your cell; the self-chat is found from this
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
-MODEL = "llama3.1"
+MODEL = "dolphin-llama3:8b"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
