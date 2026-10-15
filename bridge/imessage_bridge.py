@@ -4,7 +4,7 @@ iMessage bridge, self-text edition. You text your own Apple ID address like a
 contact, and llama 3.1 on this Mac answers in that same chat. No second
 account needed; the bridge tells its own replies apart from yours by text.
 
-Run:  python3 imessage_bridge.py chats   # list chat ids to put in CHAT_ID
+Run:  python3 imessage_bridge.py chats   # list chat ids (verify CHAT_ID matches)
       python3 imessage_bridge.py        # start watching
 """
 
@@ -15,7 +15,7 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-CHAT_ID = ""            # your own self-chat, e.g. "iMessage;-;you@icloud.com"
+CHAT_ID = "iMessage;-;elimckeon97@icloud.com"   # Elijah's self-chat
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
