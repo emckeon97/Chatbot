@@ -29,8 +29,9 @@ final class LlamaService {
                     }
 
                     var payload: [[String: String]] = []
-                    let systemPrompt = (settings.string(forKey: Defaults.systemKey) ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let personaPrompt = PersonaStore.activePromptOnDisk()
+                    let systemPrompt = personaPrompt
+                        ?? (settings.string(forKey: Defaults.systemKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                     if !systemPrompt.isEmpty {
                         payload.append(["role": "system", "content": systemPrompt])
                     }

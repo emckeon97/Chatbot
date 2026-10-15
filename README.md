@@ -4,6 +4,7 @@ A fast, clean SwiftUI chat app for iOS that streams replies from a **local llama
 
 ## Features
 - Streaming token-by-token responses
+- Character personas for role-play, with presets included
 - Chat history saved between launches
 - Configurable server address, model, temperature and system prompt
 - Stop button mid-generation, clear-chat, clean dark-friendly UI
@@ -32,6 +33,9 @@ Set the server to `http://<your-mac-ip>:8080`.
 
 Model name must match what the server knows (`llama3.1`, `llama3.1:8b-instruct-q4_K_M`, etc.).
 
+## Characters
+Settings > Characters lets you save personas, each with its own personality prompt. Tap the checkmark to make one active and the model stays in that role. Three starter characters ship in the box; edit or delete them freely.
+
 ## Notes
 - Local HTTP is allowed via the Info.plist local-networking exception, so no server changes needed.
-- Set a system prompt in Settings to shape the assistant's behavior.
+- Set a system prompt in Settings to shape the assistant's behavior when no character is active.

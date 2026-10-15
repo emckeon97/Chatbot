@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("modelName") private var modelName = "llama3.1"
     @AppStorage("temperature") private var temperature = 0.7
     @AppStorage("systemPrompt") private var systemPrompt = ""
+    @ObservedObject private var personaStore = PersonaStore.shared
 
     var body: some View {
         Form {
@@ -30,9 +31,25 @@ struct SettingsView: View {
                         .frame(width: 34)
                 }
             }
-            Section("System prompt") {
+            Section {
+                NavigationLink {
+                    PersonasView()
+                } label: {
+                    HStack {
+                        Text("Characters")
+                        Spacer()
+                        Text(personaStore.activeName ?? "None")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Character")
+            } footer: {
+                Text("A character gives the model a role to play and it stays in that role. The system prompt below applies when no character is active.")
+            }
+            Section("System prompt (used when no character is active)") {
                 TextEditor(text: $systemPrompt)
-                    .frame(minHeight: 90)
+                    .frame(minHeight: 80)
             }
             Section {
                 Text("Changes apply from your next message.")
