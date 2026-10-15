@@ -6,8 +6,8 @@ account needed; the bridge tells its own replies apart from yours by text.
 
 Reading goes straight through the Messages database (macOS locked chat reads
 away from AppleScript), so Terminal needs Full Disk Access. The conversation
-is saved to memory.json next to this script, so the model keeps its memory
-across restarts.
+is saved to memory.json next to this script and holds for seven days, so the
+model keeps its memory across restarts.
 
 Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
       python3 imessage_bridge.py        # start watching
@@ -27,7 +27,9 @@ CHAT_ID = ""                            # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
-HISTORY_LIMIT = 20       # turns of context kept
+MEMORY_DAYS = 7          # how long the model remembers the conversation
+MAX_CONTEXT_MESSAGES = 200
+ECHO_WINDOW_SECONDS = 20 # copies of your text landing right after a reply are ignored
 POLL_SECONDS = 3
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
 MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
@@ -50,7 +52,7 @@ def last_messages(limit: int = 40) -> list:
     finally:
         connection.close()
     messages = [
-        {"id": str(row[0]), "text": row[1] or ""}
+        {"id": str(row[0]), "text": row[1]}
         for row in rows
         if row[1] is not None and str(row[1]).strip()
     ]
@@ -125,10 +127,13 @@ def send(text: str) -> None:
 # ---------- llama ----------
 
 def ask(history: list) -> str:
+    window = history[-MAX_CONTEXT_MESSAGES:]
     messages = []
     if SYSTEM_PROMPT.strip():
         messages.append({"role": "system", "content": SYSTEM_PROMPT.strip()})
-    messages.extend(history)
+    messages.extend(
+        {"role": entry["role"], "content": entry["content"]} for entry in window
+    )
     body = json.dumps({"model": MODEL, "messages": messages, "stream": False}).encode()
     request = urllib.request.Request(
         OLLAMA_URL, data=body, headers={"Content-Type": "application/json"}
@@ -140,6 +145,10 @@ def ask(history: list) -> str:
 
 # ---------- memory ----------
 
+def key_of(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
 def load_history() -> list:
     if not os.path.exists(MEMORY_FILE):
         return []
@@ -149,6 +158,11 @@ def load_history() -> list:
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+
+def prune_history(history: list) -> None:
+    cutoff = time.time() - MEMORY_DAYS * 86400
+    history[:] = [e for e in history if e.get("ts", time.time()) >= cutoff]
 
 
 def save_history(history: list) -> None:
@@ -196,9 +210,12 @@ def main() -> None:
     # Anything already in the chat before startup stays unanswered.
     seen = {m["id"] for m in last_messages()}
     history = load_history()
+    prune_history(history)
     if history:
-        print("remembered turns:", len(history) // 2)
-    sent_replies: list = []   # the bridge tells its own replies apart by text
+        print("remembered messages:", len(history))
+    sent_replies: list = []   # normalized texts the bridge itself sent
+    last_user_key = ""
+    last_reply_at = 0.0
 
     while True:
         try:
@@ -206,26 +223,40 @@ def main() -> None:
                 if message["id"] in seen:
                     continue
                 text = message["text"].strip()
-                if text in sent_replies:
+                if not text:
+                    continue
+                key = key_of(text)
+                if key in sent_replies:
                     # That was the bridge talking, not you.
                     seen.add(message["id"])
                     continue
-                if not text:
+                if key == last_user_key and time.time() - last_reply_at < ECHO_WINDOW_SECONDS:
+                    # A copy of your text landing right after the reply.
+                    seen.add(message["id"])
                     continue
                 seen.add(message["id"])
-                history.append({"role": "user", "content": text})
-                del history[:-2 * HISTORY_LIMIT]
+                history.append({"role": "user", "content": text, "ts": time.time()})
+                prune_history(history)
                 try:
                     reply = ask(history)
                 except Exception as error:
                     reply = "(model error: " + str(error) + ")"
                 if reply:
-                    history.append({"role": "assistant", "content": reply})
-                    del history[:-2 * HISTORY_LIMIT]
+                    history.append({"role": "assistant", "content": reply, "ts": time.time()})
+                    prune_history(history)
                     save_history(history)
-                    sent_replies.append(reply)
-                    del sent_replies[:-5]
+                    sent_replies.append(key_of(reply))
+                    del sent_replies[:-20]
                     send(reply)
+                    last_user_key = key
+                    last_reply_at = time.time()
+                    # Mark our own reply's row seen as soon as it lands.
+                    reply_key = key_of(reply)
+                    for _ in range(3):
+                        time.sleep(1)
+                        for recent in last_messages(3):
+                            if key_of(recent["text"]) == reply_key:
+                                seen.add(recent["id"])
                     print("replied:", reply[:80].replace("\n", " "))
         except Exception as error:
             print("error:", error)
