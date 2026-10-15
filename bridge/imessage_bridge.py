@@ -4,11 +4,15 @@ iMessage bridge, self-text edition. You text your own Apple ID address like a
 contact, and llama 3.1 on this Mac answers in that same chat. No second
 account needed; the bridge tells its own replies apart from yours by text.
 
+The conversation is saved to memory.json next to this script, so the model
+keeps its memory across restarts.
+
 Run:  python3 imessage_bridge.py chats   # list chat ids (verify CHAT_ID matches)
       python3 imessage_bridge.py        # start watching
 """
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -21,6 +25,7 @@ MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
 HISTORY_LIMIT = 20       # turns of context kept
 POLL_SECONDS = 3
+MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
 
 # ---------- apple bridge ----------
 
@@ -40,13 +45,18 @@ def list_chats() -> None:
         print(chat_id)
 
 
-def last_messages(limit: int = 8) -> list:
+def last_messages() -> list:
     script = (
         'tell application "Messages"\n'
         'set out to ""\n'
-        f'set msgs to last {limit} messages of chat "{CHAT_ID}"\n'
-        'repeat with m in msgs\n'
-        'set out to out & (id of m as text) & "@@" & (is from me of m as text) & "@@" & (text of m) & "###"\n'
+        'repeat with m in (messages of chat "' + CHAT_ID + '")\n'
+        'set mid to id of m as text\n'
+        'set mfrom to is from me of m as text\n'
+        'set mtext to ""\n'
+        'try\n'
+        'set mtext to (text of m) as text\n'
+        'end try\n'
+        'set out to out & mid & "@@" & mfrom & "@@" & mtext & "###"\n'
         'end repeat\n'
         'return out\n'
         'end tell'
@@ -87,6 +97,27 @@ def ask(history: list) -> str:
     return data["choices"][0]["message"]["content"].strip()
 
 
+# ---------- memory ----------
+
+def load_history() -> list:
+    if not os.path.exists(MEMORY_FILE):
+        return []
+    try:
+        with open(MEMORY_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_history(history: list) -> None:
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as file:
+            json.dump(history, file, ensure_ascii=False, indent=1)
+    except Exception as error:
+        print("could not save memory:", error)
+
+
 # ---------- main loop ----------
 
 def main() -> None:
@@ -100,12 +131,14 @@ def main() -> None:
 
     # Anything already in the chat before startup stays unanswered.
     seen = {m["id"] for m in last_messages()}
-    history: list = []
+    history = load_history()
+    if history:
+        print("remembered turns:", len(history) // 2)
     sent_replies: list = []   # the bridge tells its own replies apart by text
 
     while True:
         try:
-            for message in last_messages():
+            for message in last_messages()[-8:]:
                 if message["id"] in seen:
                     continue
                 text = message["text"].strip()
@@ -125,6 +158,7 @@ def main() -> None:
                 if reply:
                     history.append({"role": "assistant", "content": reply})
                     del history[:-2 * HISTORY_LIMIT]
+                    save_history(history)
                     sent_replies.append(reply)
                     del sent_replies[:-5]
                     send(reply)
