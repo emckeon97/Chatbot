@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-iMessage bridge: texts sent to one chat on this Mac get answered by a local
-llama model running on Ollama, so you can text the model like a contact.
+iMessage bridge, self-text edition. You text your own Apple ID address like a
+contact, and llama 3.1 on this Mac answers in that same chat. No second
+account needed; the bridge tells its own replies apart from yours by text.
 
 Run:  python3 imessage_bridge.py chats   # list chat ids to put in CHAT_ID
       python3 imessage_bridge.py        # start watching
@@ -14,7 +15,7 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-CHAT_ID = ""            # e.g. "iMessage;-;yourbot@icloud.com" or "iMessage;+;+1..."
+CHAT_ID = ""            # your own self-chat, e.g. "iMessage;-;you@icloud.com"
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
@@ -100,13 +101,18 @@ def main() -> None:
     # Anything already in the chat before startup stays unanswered.
     seen = {m["id"] for m in last_messages()}
     history: list = []
+    sent_replies: list = []   # the bridge tells its own replies apart by text
 
     while True:
         try:
             for message in last_messages():
-                if message["id"] in seen or message["from_me"]:
+                if message["id"] in seen:
                     continue
                 text = message["text"].strip()
+                if message["from_me"] and text in sent_replies:
+                    # That was the bridge talking, not you.
+                    seen.add(message["id"])
+                    continue
                 if not text:
                     continue
                 seen.add(message["id"])
@@ -119,6 +125,8 @@ def main() -> None:
                 if reply:
                     history.append({"role": "assistant", "content": reply})
                     del history[:-2 * HISTORY_LIMIT]
+                    sent_replies.append(reply)
+                    del sent_replies[:-5]
                     send(reply)
                     print("replied:", reply[:80].replace("\n", " "))
         except Exception as error:

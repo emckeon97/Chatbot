@@ -1,28 +1,28 @@
-# iMessage bridge
+# iMessage bridge, self-text edition
 
-Texts sent to one iMessage chat on your Mac get answered by llama 3.1 on Ollama, so you can text the model like a contact.
+You text your own Apple ID address like a contact, and llama 3.1 on your Mac answers in that same chat. No second Apple ID needed.
 
-## One-time setup
+## Setup
 
-1. Create a free second Apple ID (for example `llamabot@icloud.com`) at appleid.apple.com. The bridge replies from that account, so replies land on your iPhone as a separate contact instead of mixing with your own texts.
-2. On the Mac, open Messages > Settings > iMessage, click the + and sign in with that second Apple ID (keep your main one signed in too).
-3. On your iPhone, text that address once so the chat exists.
-4. In Terminal, from the `bridge` folder:
+1. On your iPhone, open Messages and text your own Apple ID address once (your iMessage email, like `you@icloud.com`, or the phone number tied to iMessage). The chat syncs to the Mac. Save it as a contact with whatever name you like, say Llama.
+2. In Terminal, from the `bridge` folder:
    ```
    python3 imessage_bridge.py chats
    ```
-   macOS asks to let Terminal control Messages the first time. Allow it, then copy the chat id for that conversation.
-5. Paste the chat id into `CHAT_ID` at the top of `imessage_bridge.py`, and set `SYSTEM_PROMPT` if you want a persona.
+   macOS asks to let Terminal control Messages the first time. Allow it, then copy the chat id for that self-chat, like `iMessage;-;you@icloud.com`.
+3. Paste the chat id into `CHAT_ID` at the top of `imessage_bridge.py`, and set `SYSTEM_PROMPT` if you want a persona.
 
 ## Run it
+
+Make sure Ollama is running with the model pulled (`ollama serve`, `ollama pull llama3.1`), then:
 
 ```
 python3 imessage_bridge.py
 ```
 
-Keep the Mac on and awake. Every text you send the contact gets a llama reply; Ctrl-C stops it.
+Keep the Mac on and awake. Every text you send that contact gets a llama reply in the same chat; Ctrl-C stops it.
 
 ## Notes
-- Ollama must be running (`ollama serve`) with the model pulled.
-- The model sees the last 20 turns as context; delete or edit `personas` in the script for longer memory.
-- If replies ever stop, re-run `chats` to check the chat id has not changed.
+- The bridge tells its own replies apart from your texts by matching the text, so avoid quoting one of the bot's replies word for word if you want an answer to it.
+- The model sees the last 20 turns as context.
+- If replies ever stop, re-run `chats` to check the chat id, and confirm Ollama is still running.
