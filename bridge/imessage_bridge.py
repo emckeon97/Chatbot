@@ -4,9 +4,10 @@ iMessage bridge, self-text edition. You text your own Apple ID address like a
 contact, and llama 3.1 on this Mac answers in that same chat. No second
 account needed; the bridge tells its own replies apart from yours by text.
 
-The script finds the self-chat by your address, no chat id needed. The
-conversation is saved to memory.json next to this script, so the model keeps
-its memory across restarts.
+Reading goes straight through the Messages database (macOS locked chat reads
+away from AppleScript), so Terminal needs Full Disk Access. The conversation
+is saved to memory.json next to this script, so the model keeps its memory
+across restarts.
 
 Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
       python3 imessage_bridge.py        # start watching
@@ -14,6 +15,7 @@ Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import time
@@ -28,8 +30,33 @@ SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard 
 HISTORY_LIMIT = 20       # turns of context kept
 POLL_SECONDS = 3
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
+MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
 
-# ---------- apple bridge ----------
+# ---------- message reading (database) ----------
+
+def last_messages(limit: int = 40) -> list:
+    connection = sqlite3.connect(
+        "file:" + MESSAGE_DB + "?mode=ro", uri=True, timeout=5
+    )
+    try:
+        rows = connection.execute(
+            "SELECT m.ROWID, m.text FROM message m "
+            "JOIN chat_message_join cmj ON cmj.message_id = m.ROWID "
+            "JOIN chat c ON c.ROWID = cmj.chat_id "
+            "WHERE c.chat_identifier = ? OR c.chat_identifier = 'E:' || ? "
+            "ORDER BY m.ROWID DESC LIMIT ?",
+            (USER_HANDLE, USER_HANDLE, limit),
+        ).fetchall()
+    finally:
+        connection.close()
+    messages = [
+        {"id": str(row[0]), "text": row[1] or ""}
+        for row in rows
+        if row[1] is not None and str(row[1]).strip()
+    ]
+    return list(reversed(messages))
+
+# ---------- sending (AppleScript) ----------
 
 def osascript(script: str) -> str:
     result = subprocess.run(
@@ -82,34 +109,6 @@ def resolve_snippet() -> str:
         'end if\n'
         'if theChat is missing value then error number -1728\n'
     )
-
-
-def last_messages() -> list:
-    script = (
-        'tell application "Messages"\n'
-        + resolve_snippet()
-        + 'set out to ""\n'
-        'repeat with m in (messages of theChat)\n'
-        'set mid to id of m as text\n'
-        'set mtext to ""\n'
-        'try\n'
-        'set mtext to (text of m) as text\n'
-        'end try\n'
-        'set out to out & mid & "@@" & mtext & "###"\n'
-        'end repeat\n'
-        'return out\n'
-        'end tell'
-    )
-    raw = osascript(script)
-    messages = []
-    for entry in [e for e in raw.split("###") if e.strip()]:
-        parts = entry.split("@@")
-        if len(parts) >= 2:
-            messages.append({
-                "id": parts[0].strip(),
-                "text": "@@".join(parts[1:]),
-            })
-    return messages
 
 
 def send(text: str) -> None:
@@ -165,13 +164,25 @@ def save_history(history: list) -> None:
 def main() -> None:
     global CHAT_ID
 
+    if not os.path.exists(MESSAGE_DB):
+        print("Couldn't find the Messages database at", MESSAGE_DB)
+        print("Give Terminal Full Disk Access, then run this again.")
+        sys.exit(1)
+    try:
+        last_messages(1)
+    except Exception as error:
+        print("could not read the Messages database:", error)
+        print("System Settings > Privacy & Security > Full Disk Access, add Terminal,")
+        print("then quit and reopen Terminal and run this again.")
+        sys.exit(1)
+
     try:
         chat_id = resolve_chat_id()
     except Exception as error:
         print("could not list chats:", error)
         sys.exit(1)
     if not chat_id:
-        print("Couldn't find your self-chat on this Mac.")
+        print("Couldn't find your self-chat for sending.")
         print("Chat ids Messages knows right now:")
         for existing in all_chat_ids():
             print(existing)
@@ -191,7 +202,7 @@ def main() -> None:
 
     while True:
         try:
-            for message in last_messages()[-8:]:
+            for message in last_messages(8):
                 if message["id"] in seen:
                     continue
                 text = message["text"].strip()
