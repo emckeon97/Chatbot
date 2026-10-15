@@ -7,7 +7,7 @@ account needed; the bridge tells its own replies apart from yours by text.
 The conversation is saved to memory.json next to this script, so the model
 keeps its memory across restarts.
 
-Run:  python3 imessage_bridge.py chats   # list chat ids (verify CHAT_ID matches)
+Run:  python3 imessage_bridge.py chats   # list every chat id and name
       python3 imessage_bridge.py        # start watching
 """
 
@@ -19,7 +19,7 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-CHAT_ID = "iMessage;-;elimckeon97@icloud.com"   # Elijah's self-chat
+CHAT_ID = "iMessage;-;elimckeon97@icloud.com"   # Elijah's self-chat (verify with chats)
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.1"
 SYSTEM_PROMPT = ""       # optional, e.g. "You are NOVA, a dry-witted shipboard AI."
@@ -40,18 +40,21 @@ def osascript(script: str) -> str:
 
 
 def list_chats() -> None:
-    out = osascript('tell application "Messages" to get id of every chat')
-    for chat_id in [c.strip() for c in out.split(",") if c.strip()]:
-        print(chat_id)
+    ids_raw = osascript('tell application "Messages" to get id of every chat')
+    names_raw = osascript('tell application "Messages" to get name of every chat')
+    ids = [x.strip() for x in ids_raw.split(",") if x.strip()]
+    names = [x.strip() for x in names_raw.split(",")]
+    for index, chat_id in enumerate(ids):
+        name = names[index] if index < len(names) and names[index] else "(no name)"
+        print(name, "->", chat_id)
 
 
 def last_messages() -> list:
-    # Every message in a self-chat is "from me", so the bridge tells its own
-    # replies apart from Elijah's texts by matching the text.
     script = (
         'tell application "Messages"\n'
+        'set theChat to chat "' + CHAT_ID + '"\n'
         'set out to ""\n'
-        'repeat with m in (messages of chat "' + CHAT_ID + '")\n'
+        'repeat with m in (messages of theChat)\n'
         'set mid to id of m as text\n'
         'set mtext to ""\n'
         'try\n'
