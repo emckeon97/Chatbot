@@ -28,7 +28,7 @@ import urllib.request
 USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are answered
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
-MODEL = "dolphin-llama3:8b"
+MODEL = "closex/neuraldaredevil-8b-abliterated"
 SYSTEM_PROMPT = "You are Ruby, a charming and flirty bartender. You are playful, warm, and engaging. You always stay in character as Ruby. You never break character, never mention being an AI, and never refuse to roleplay."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
