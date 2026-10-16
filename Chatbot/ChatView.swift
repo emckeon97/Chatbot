@@ -3,7 +3,6 @@ import SwiftUI
 struct ChatView: View {
     @State private var conversationID: UUID?
     @ObservedObject private var store = ChatStore.shared
-    @State private var draft = ""
 
     init(conversationID: UUID?) {
         _conversationID = State(initialValue: conversationID)
@@ -34,9 +33,18 @@ struct ChatView: View {
                     .padding(.vertical, 8)
                 }
                 .defaultScrollAnchor(.bottom)
+                .scrollDismissesKeyboard(.interactively)
             }
             Divider()
-            inputBar
+            InputBarView(
+                isGenerating: store.isGenerating && store.generatingIn == conversationID,
+                onSend: { text in
+                    conversationID = store.send(text, in: conversationID)
+                },
+                onStop: {
+                    store.stop()
+                }
+            )
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationBarTitleDisplayMode(.inline)
@@ -77,15 +85,27 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var inputBar: some View {
+}
+
+/// Isolated input bar so keystrokes don't re-render on every streaming update.
+private struct InputBarView: View {
+    let isGenerating: Bool
+    let onSend: (String) -> Void
+    let onStop: () -> Void
+
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField("Message", text: $draft, axis: .vertical)
                 .lineLimit(1...4)
                 .padding(10)
                 .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-            if store.isGenerating && store.generatingIn == conversationID {
+                .focused($isFocused)
+            if isGenerating {
                 Button {
-                    store.stop()
+                    onStop()
                 } label: {
                     Image(systemName: "stop.circle.fill")
                         .font(.system(size: 26))
@@ -93,16 +113,18 @@ struct ChatView: View {
                 }
             } else {
                 Button {
-                    conversationID = store.send(draft, in: conversationID)
+                    let text = draft
                     draft = ""
+                    onSend(text)
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 26))
                 }
-                .disabled(store.isGenerating || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .animation(.easeOut(duration: 0.15), value: isGenerating)
     }
 }
