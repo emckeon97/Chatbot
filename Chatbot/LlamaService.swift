@@ -56,8 +56,13 @@ final class LlamaService {
 
                     var payload: [[String: String]] = []
                     let personaPrompt = PersonaStore.activePromptOnDisk()
-                    let systemPrompt = personaPrompt
+                    var systemPrompt = personaPrompt
                         ?? (settings.string(forKey: Defaults.systemKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Inject long-term memory
+                    let memoryContext = await MemoryService.shared.promptContext()
+                    if !memoryContext.isEmpty {
+                        systemPrompt += memoryContext
+                    }
                     if !systemPrompt.isEmpty {
                         payload.append(["role": "system", "content": systemPrompt])
                     }
