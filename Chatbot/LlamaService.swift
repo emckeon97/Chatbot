@@ -7,8 +7,34 @@ final class LlamaService {
         static let temperatureKey = "temperature"
         static let systemKey = "systemPrompt"
         static let server = "http://localhost:11434"
-        static let model = "llama3.1"
+        static let model = "dolphin-llama3:8b"
         static let temperature = 0.7
+    }
+
+    /// Fetches installed model names from Ollama's /api/tags endpoint.
+    func fetchModels() async throws -> [String] {
+        let settings = UserDefaults.standard
+        var server = (settings.string(forKey: Defaults.serverKey) ?? Defaults.server)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !server.hasPrefix("http://") && !server.hasPrefix("https://") {
+            server = "http://" + server
+        }
+        while server.hasSuffix("/") { server.removeLast() }
+        guard let base = URL(string: server),
+              let url = URL(string: "api/tags", relativeTo: base) else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url.absoluteURL)
+        request.timeoutInterval = 15
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw URLError(.badServerResponse)
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["models"] as? [[String: Any]] else {
+            return []
+        }
+        return models.compactMap { $0["name"] as? String }.sorted()
     }
 
     /// Streams tokens from an OpenAI-compatible local server (Ollama or llama.cpp).
