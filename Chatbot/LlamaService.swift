@@ -14,28 +14,29 @@ final class LlamaService {
 
     /// Fetches installed model names from Ollama's /api/tags endpoint.
     func fetchModels() async throws -> [String] {
-        let settings = UserDefaults.standard
-        var server = (settings.string(forKey: Defaults.serverKey) ?? Defaults.server)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !server.hasPrefix("http://") && !server.hasPrefix("https://") {
-            server = "http://" + server
+        let servers = Self.serverURLs()
+        guard !servers.isEmpty else { throw URLError(.badURL) }
+        var lastError: Error = URLError(.cannotConnectToHost)
+        for base in servers {
+            guard let url = URL(string: "api/tags", relativeTo: base) else { continue }
+            do {
+                var request = URLRequest(url: url.absoluteURL)
+                request.timeoutInterval = 15
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                    throw URLError(.badServerResponse)
+                }
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let models = json["models"] as? [[String: Any]] else {
+                    return []
+                }
+                return models.compactMap { $0["name"] as? String }.sorted()
+            } catch {
+                lastError = error
+                continue
+            }
         }
-        while server.hasSuffix("/") { server.removeLast() }
-        guard let base = URL(string: server),
-              let url = URL(string: "api/tags", relativeTo: base) else {
-            throw URLError(.badURL)
-        }
-        var request = URLRequest(url: url.absoluteURL)
-        request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw URLError(.badServerResponse)
-        }
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let models = json["models"] as? [[String: Any]] else {
-            return []
-        }
-        return models.compactMap { $0["name"] as? String }.sorted()
+        throw lastError
     }
 
     /// Streams tokens from an OpenAI-compatible local server (Ollama or llama.cpp).
