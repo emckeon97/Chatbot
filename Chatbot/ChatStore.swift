@@ -29,6 +29,16 @@ final class ChatStore: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isGenerating else { return conversationID }
 
+        // Check for memory commands
+        if let memAction = MemoryService.shared.parse(trimmed) {
+            return handleMemoryAction(memAction, original: trimmed, in: conversationID)
+        }
+
+        // Check for web search requests
+        if let query = WebSearchService.shared.parseQuery(trimmed) {
+            return handleWebSearch(query: query, original: trimmed, in: conversationID)
+        }
+
         // Check for proactive schedule requests ("text me in...", "call me at...", "text me every day...")
         if let (action, message, date, recurring) = ProactiveService.shared.parseScheduleRequest(trimmed) {
             return handleScheduleRequest(action: action, message: message, date: date, recurring: recurring, original: trimmed, in: conversationID)
@@ -63,6 +73,80 @@ final class ChatStore: ObservableObject {
             } catch {
                 self.completeStream(into: targetID)
                 self.appendTo(targetID, ChatMessage(role: .assistant, content: "Error: \(error.localizedDescription)"))
+            }
+            self.isGenerating = false
+            self.generatingIn = nil
+            self.save()
+        }
+        return targetID
+    }
+
+    private func handleMemoryAction(_ action: MemoryService.MemoryAction, original: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
+        upsert(convo)
+        let targetID = convo.id
+
+        let response: String
+        switch action {
+        case .remember(let fact):
+            MemoryService.shared.remember(fact)
+            response = "Got it, I'll remember that."
+        case .recall:
+            let mems = MemoryService.shared.memories
+            response = mems.isEmpty ? "I don't have anything saved yet." :
+                "Here's what I remember:\n" + mems.map { "- \($0)" }.joined(separator: "\n")
+        case .forget(let query):
+            response = MemoryService.shared.forget(matching: query) ?
+                "Forgot everything matching that." : "I couldn't find anything matching that."
+        case .clear:
+            MemoryService.shared.clear()
+            response = "Cleared all memories."
+        }
+        appendTo(targetID, ChatMessage(role: .assistant, content: response))
+        save()
+        return targetID
+    }
+
+    private func handleWebSearch(query: String, original: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
+        upsert(convo)
+        let targetID = convo.id
+
+        streamingText = ""
+        isGenerating = true
+        generatingIn = targetID
+
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let results = try await WebSearchService.shared.search(query)
+                // Build messages with search context
+                var history = convo.messages
+                history.append(ChatMessage(role: .user, content:
+                    "Web search results for '\(query)':\n\(results)\n\nBased on these results, answer: \(original)"))
+                for try await chunk in self.service.stream(messages: history) {
+                    self.streamingText += chunk
+                }
+                self.completeStream(into: targetID)
+            } catch is CancellationError {
+                self.completeStream(into: targetID)
+            } catch {
+                self.completeStream(into: targetID)
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: "Search failed: \(error.localizedDescription)"))
             }
             self.isGenerating = false
             self.generatingIn = nil
