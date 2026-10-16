@@ -3,6 +3,7 @@ import SwiftUI
 struct ChatView: View {
     @State private var conversationID: UUID?
     @ObservedObject private var store = ChatStore.shared
+    @State private var showCall = false
 
     init(conversationID: UUID?) {
         _conversationID = State(initialValue: conversationID)
@@ -52,6 +53,11 @@ struct ChatView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
+                    showCall = true
+                } label: {
+                    Image(systemName: "phone.fill")
+                }
+                Button {
                     store.clearMessages(in: conversationID)
                 } label: {
                     Image(systemName: "arrow.uturn.backward.circle")
@@ -63,6 +69,9 @@ struct ChatView: View {
                     Image(systemName: "gearshape")
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCall) {
+            CallView()
         }
     }
 
