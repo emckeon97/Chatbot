@@ -25,9 +25,7 @@ struct SettingsView: View {
             } header: {
                 Text("Server")
             } footer: {
-                Text("Tailscale IP is used as a fallback when you're away from home Wi-Fi.")
-            } footer: {
-                Text("Ollama listens on port 11434. On your iPhone, use your Mac's network address, like http://192.168.1.20:11434. A llama.cpp server works too (port 8080); both speak the same API.")
+                Text("Tailscale IP is used as a fallback when you're away from home Wi-Fi. Ollama listens on port 11434.")
             }
             Section("Model") {
                 if availableModels.isEmpty {
