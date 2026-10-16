@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import SwiftUI
 
 @MainActor
@@ -217,6 +218,44 @@ final class ChatStore: ObservableObject {
 
     func stop() {
         streamTask?.cancel()
+    }
+
+    /// Send an image to the vision model (moondream fallback).
+    @discardableResult
+    func sendImage(_ image: UIImage, prompt: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: "[Image] \(prompt)"))
+        if convo.title.isEmpty { convo.title = "Image question" }
+        upsert(convo)
+        let targetID = convo.id
+
+        streamingText = ""
+        isGenerating = true
+        generatingIn = targetID
+
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await chunk in VisionService.shared.describe(image: image, prompt: prompt) {
+                    self.streamingText += chunk
+                }
+                self.completeStream(into: targetID)
+            } catch is CancellationError {
+                self.completeStream(into: targetID)
+            } catch {
+                self.completeStream(into: targetID)
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: "Vision failed: \(error.localizedDescription)\n\nMake sure you've run 'ollama pull moondream' on your Mac."))
+            }
+            self.isGenerating = false
+            self.generatingIn = nil
+            self.save()
+        }
+        return targetID
     }
 
     func clearMessages(in conversationID: UUID?) {
