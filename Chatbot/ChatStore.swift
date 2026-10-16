@@ -94,6 +94,19 @@ final class ChatStore: ObservableObject {
             guard let self else { return }
             do {
                 switch action {
+                case .notify:
+                    let isRepeating = recurring != nil
+                    try await NotificationService.shared.schedule(
+                        title: "Reminder",
+                        body: message,
+                        at: date,
+                        repeats: isRepeating
+                    )
+                    await MainActor.run {
+                        let recurStr = recurring == "daily" ? " every day" : (recurring == "weekly" ? " every week" : "")
+                        self.appendTo(targetID, ChatMessage(role: .assistant, content: "Done — I'll remind you\(recurStr) at \(dateStr): \(message)"))
+                        self.save()
+                    }
                 case .text:
                     try await ProactiveService.shared.scheduleText(message: message, at: date, recurring: recurring)
                     await MainActor.run {
