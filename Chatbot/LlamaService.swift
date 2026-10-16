@@ -6,7 +6,7 @@ final class LlamaService {
         static let modelKey = "modelName"
         static let temperatureKey = "temperature"
         static let systemKey = "systemPrompt"
-        static let server = "http://localhost:11434"
+        static let server = "http://192.168.0.102:11434"
         static let model = "dolphin-llama3:8b"
         static let temperature = 0.7
     }
