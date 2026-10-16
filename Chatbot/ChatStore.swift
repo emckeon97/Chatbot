@@ -29,6 +29,11 @@ final class ChatStore: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isGenerating else { return conversationID }
 
+        // Check for proactive schedule requests ("text me in...", "call me at...")
+        if let (action, message, date) = ProactiveService.shared.parseScheduleRequest(trimmed) {
+            return handleScheduleRequest(action: action, message: message, date: date, original: trimmed, in: conversationID)
+        }
+
         var convo: Conversation
         if let conversationID, let existing = conversation(id: conversationID) {
             convo = existing
@@ -62,6 +67,52 @@ final class ChatStore: ObservableObject {
             self.isGenerating = false
             self.generatingIn = nil
             self.save()
+        }
+        return targetID
+    }
+
+    private func handleScheduleRequest(action: ScheduleAction, message: String, date: Date, original: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty {
+            convo.title = String(original.prefix(32))
+        }
+        upsert(convo)
+        let targetID = convo.id
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        let dateStr = formatter.string(from: date)
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                switch action {
+                case .text:
+                    try await ProactiveService.shared.scheduleText(message: message, at: date)
+                    await MainActor.run {
+                        self.appendTo(targetID, ChatMessage(role: .assistant, content: "Done — I'll text you at \(dateStr): \(message)"))
+                        self.save()
+                    }
+                case .call:
+                    try await ProactiveService.shared.scheduleCall(at: date, message: message)
+                    await MainActor.run {
+                        self.appendTo(targetID, ChatMessage(role: .assistant, content: "Done — I'll remind you to call at \(dateStr)."))
+                        self.save()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.appendTo(targetID, ChatMessage(role: .assistant, content: "Couldn't schedule that: \(error.localizedDescription)"))
+                    self.save()
+                }
+            }
         }
         return targetID
     }
