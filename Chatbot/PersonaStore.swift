@@ -7,7 +7,7 @@ final class PersonaStore: ObservableObject {
 
     @Published private(set) var personas: [Persona] = []
 
-    private static let archive = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    nonisolated private static let archive = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("personas.json")
 
     private init() {
