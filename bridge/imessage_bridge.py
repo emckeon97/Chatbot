@@ -207,7 +207,7 @@ def save_schedule(items: list) -> None:
         print("could not save schedule:", e)
 
 
-def next_occurrence(item: dict) -> float | None:
+def next_occurrence(item):
     """Calculate next fire time for a recurring item."""
     recurring = item.get("recurring")
     if not recurring:
