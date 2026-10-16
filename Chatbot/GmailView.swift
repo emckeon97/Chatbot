@@ -99,7 +99,7 @@ struct GmailView: View {
 
 struct GmailDetailView: View {
     let message: GmailMessage
-    @State private var body: String?
+    @State private var messageBody: String?
     @State private var loading = true
 
     var body: some View {
@@ -118,7 +118,7 @@ struct GmailDetailView: View {
                     if loading {
                         ProgressView()
                     } else {
-                        Text(body ?? "Could not load message body.")
+                        Text(messageBody ?? "Could not load message body.")
                             .font(.body)
                     }
                 }
@@ -128,7 +128,7 @@ struct GmailDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .task {
-            body = await GmailService.shared.fetchBody(for: message)
+            messageBody = await GmailService.shared.fetchBody(for: message)
             loading = false
         }
     }
@@ -138,7 +138,7 @@ struct GmailComposeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var to = ""
     @State private var subject = ""
-    @State private var body = ""
+    @State private var emailBody = ""
     @State private var sending = false
     @State private var error: String?
 
@@ -149,7 +149,7 @@ struct GmailComposeView: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                 TextField("Subject", text: $subject)
-                TextEditor(text: $body)
+                TextEditor(text: $emailBody)
                     .frame(minHeight: 200)
                 if let error {
                     Text(error).foregroundStyle(.red).font(.caption)
@@ -173,7 +173,7 @@ struct GmailComposeView: View {
         sending = true
         defer { sending = false }
         do {
-            try await GmailService.shared.send(to: to, subject: subject, body: body)
+            try await GmailService.shared.send(to: to, subject: subject, body: emailBody)
             dismiss()
         } catch {
             self.error = error.localizedDescription
