@@ -207,22 +207,50 @@ def save_schedule(items: list) -> None:
         print("could not save schedule:", e)
 
 
+def next_occurrence(item: dict) -> float | None:
+    """Calculate next fire time for a recurring item."""
+    recurring = item.get("recurring")
+    if not recurring:
+        return None
+    at = item.get("at", time.time())
+    now = time.time()
+    if recurring == "daily":
+        # Next day at same time
+        nxt = at + 86400
+        while nxt <= now:
+            nxt += 86400
+        return nxt
+    if recurring == "weekly":
+        nxt = at + 7 * 86400
+        while nxt <= now:
+            nxt += 7 * 86400
+        return nxt
+    return None
+
+
 def check_schedule() -> None:
     """Send any due scheduled texts."""
     items = load_schedule()
     now = time.time()
     remaining = []
+    changed = False
     for item in items:
         if item.get("at", 0) <= now:
             try:
                 send(item.get("message", ""))
                 print("sent scheduled text:", item.get("message", "")[:50])
+                changed = True
+                # Reschedule if recurring
+                nxt = next_occurrence(item)
+                if nxt:
+                    item["at"] = nxt
+                    remaining.append(item)
             except Exception as e:
                 print("scheduled send failed:", e)
                 remaining.append(item)
         else:
             remaining.append(item)
-    if len(remaining) != len(items):
+    if changed or len(remaining) != len(items):
         save_schedule(remaining)
 
 
@@ -237,7 +265,8 @@ class ScheduleHandler(BaseHTTPRequestHandler):
                 if not message:
                     raise ValueError("empty message")
                 items = load_schedule()
-                items.append({"message": message, "at": at, "created": time.time()})
+                recurring = data.get("recurring")  # "daily", "weekly", or None
+                items.append({"message": message, "at": at, "recurring": recurring, "created": time.time()})
                 save_schedule(items)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -247,6 +276,31 @@ class ScheduleHandler(BaseHTTPRequestHandler):
                 self.send_response(400)
                 self.end_headers()
                 self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+        elif self.path == "/list_scheduled":
+            items = load_schedule()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(items).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        if self.path.startswith("/cancel_scheduled/"):
+            try:
+                idx = int(self.path.split("/")[-1])
+                items = load_schedule()
+                if 0 <= idx < len(items):
+                    items.pop(idx)
+                    save_schedule(items)
+                    self.send_response(200)
+                else:
+                    self.send_response(404)
+                self.end_headers()
+            except Exception:
+                self.send_response(400)
+                self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
