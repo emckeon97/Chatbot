@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("serverURL") private var serverURL = "http://192.168.0.102:11434"
+    @AppStorage("tailscaleServer") private var tailscaleURL = ""
     @AppStorage("modelName") private var modelName = "dolphin-llama3:8b"
     @AppStorage("temperature") private var temperature = 0.7
     @AppStorage("systemPrompt") private var systemPrompt = ""
@@ -17,8 +18,14 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .onChange(of: serverURL) { Task { await loadModels() } }
+                TextField("Tailscale IP (e.g. http://100.x.x.x:11434)", text: $tailscaleURL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
             } header: {
                 Text("Server")
+            } footer: {
+                Text("Tailscale IP is used as a fallback when you're away from home Wi-Fi.")
             } footer: {
                 Text("Ollama listens on port 11434. On your iPhone, use your Mac's network address, like http://192.168.1.20:11434. A llama.cpp server works too (port 8080); both speak the same API.")
             }
