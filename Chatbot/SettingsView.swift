@@ -16,7 +16,7 @@ struct SettingsView: View {
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .onChange(of: serverURL) { _ in Task { await loadModels() } }
+                    .onChange(of: serverURL) { Task { await loadModels() } }
             } header: {
                 Text("Server")
             } footer: {
