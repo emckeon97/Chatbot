@@ -25,14 +25,14 @@ import time
 import urllib.request
 
 # ---------- settings ----------
-USER_HANDLE = "7042800968"  # your cell; the self-chat is found from this
+USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are answered
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "dolphin-llama3:8b"
 SYSTEM_PROMPT = "You are a flirty, playful chatbot. Stay in character and be natural and engaging."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
-ECHO_WINDOW_SECONDS = 20 # copies of your text landing right after a reply are ignored
+ECHO_WINDOW_SECONDS = 20  # copies of your text landing right after a reply are ignored
 POLL_SECONDS = 3
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
 MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
@@ -124,12 +124,12 @@ def send(text: str) -> None:
         'tell application "Messages"\n'
         + resolve_snippet()
         + 'send "' + escaped + '" to theChat\n'
-        'end tell'
+        + 'end tell'
     )
     osascript(script)
 
 
-# ---------- llama ----------
+# ---------- model ----------
 
 def ask(history: list) -> str:
     window = history[-MAX_CONTEXT_MESSAGES:]
