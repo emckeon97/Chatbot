@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("serverURL") private var serverURL = "http://localhost:11434"
+    @AppStorage("serverURL") private var serverURL = "http://192.168.0.102:11434"
     @AppStorage("modelName") private var modelName = "dolphin-llama3:8b"
     @AppStorage("temperature") private var temperature = 0.7
     @AppStorage("systemPrompt") private var systemPrompt = ""
@@ -12,7 +12,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                TextField("http://localhost:11434", text: $serverURL)
+                TextField("http://192.168.0.102:11434", text: $serverURL)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -102,7 +102,7 @@ struct SettingsView: View {
 
     static var endpointSummary: String {
         let settings = UserDefaults.standard
-        let server = settings.string(forKey: "serverURL") ?? "http://localhost:11434"
+        let server = settings.string(forKey: "serverURL") ?? "http://192.168.0.102:11434"
         let model = settings.string(forKey: "modelName") ?? "dolphin-llama3:8b"
         return "\(model) at \(server)"
     }
