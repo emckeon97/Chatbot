@@ -16,7 +16,11 @@ final class GmailService: ObservableObject {
 
     private var accessToken: String?
 
-    private init() {}
+    private init() {
+        // Configure Google Sign-In with the client ID
+        let config = GIDConfiguration(clientID: "294125895152-cmamrfum6a6eu44gp3nd52h7amtl9q08.apps.googleusercontent.com")
+        GIDSignIn.sharedInstance.configuration = config
+    }
 
     // MARK: - Auth
 
