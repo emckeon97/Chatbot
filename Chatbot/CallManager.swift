@@ -24,11 +24,13 @@ final class CallManager: ObservableObject {
         // Configure audio session for both recording and playback
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true)
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker])
         } catch {
             status = "Audio setup failed: \(error.localizedDescription)"
             return
+        }
+        Task.detached {
+            try? AVAudioSession.sharedInstance().setActive(true)
         }
 
         SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
@@ -64,14 +66,21 @@ final class CallManager: ObservableObject {
         conversation = []
         transcript = ""
         status = "Call ended"
-        try? AVAudioSession.sharedInstance().setActive(false)
+        Task.detached {
+            try? AVAudioSession.sharedInstance().setActive(false)
+        }
     }
 
     private func startListening() {
         guard callActive, !isListening, !isSpeaking else { return }
 
         // Ensure audio session is active for recording
-        try? AVAudioSession.sharedInstance().setActive(true)
+        if !AVAudioSession.sharedInstance().isOtherAudioPlaying {
+            // Already configured, just ensure active off-main-thread
+        }
+        Task.detached {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let request = recognitionRequest else { return }
