@@ -64,64 +64,73 @@ final class LlamaService {
     func stream(messages: [ChatMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                do {
-                    let settings = UserDefaults.standard
-                    let servers = Self.serverURLs()
-                    guard let base = servers.first,
-                          let url = URL(string: "v1/chat/completions", relativeTo: base) else {
-                        throw URLError(.badURL)
-                    }
-
-                    var payload: [[String: String]] = []
-                    let personaPrompt = PersonaStore.activePromptOnDisk()
-                    var systemPrompt = personaPrompt
-                        ?? (settings.string(forKey: Defaults.systemKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                    // Inject long-term memory
-                    let memoryContext = await MemoryService.shared.promptContext()
-                    if !memoryContext.isEmpty {
-                        systemPrompt += memoryContext
-                    }
-                    if !systemPrompt.isEmpty {
-                        payload.append(["role": "system", "content": systemPrompt])
-                    }
-                    for message in messages {
-                        payload.append(["role": message.role.rawValue, "content": message.content])
-                    }
-
-                    let body: [String: Any] = [
-                        "model": settings.string(forKey: Defaults.modelKey) ?? Defaults.model,
-                        "messages": payload,
-                        "stream": true,
-                        "temperature": (settings.object(forKey: Defaults.temperatureKey) as? Double) ?? Defaults.temperature,
-                    ]
-
-                    var request = URLRequest(url: url.absoluteURL)
-                    request.httpMethod = "POST"
-                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    request.timeoutInterval = 120
-                    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                        throw URLError(.badServerResponse)
-                    }
-
-                    for try await line in bytes.lines {
-                        guard line.hasPrefix("data:") else { continue }
-                        let chunk = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                        if chunk == "[DONE]" { break }
-                        guard let data = chunk.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let choices = json["choices"] as? [[String: Any]],
-                              let delta = choices.first?["delta"] as? [String: Any],
-                              let content = delta["content"] as? String,
-                              !content.isEmpty else { continue }
-                        continuation.yield(content)
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
+                let settings = UserDefaults.standard
+                let servers = Self.serverURLs()
+                guard !servers.isEmpty else {
+                    continuation.finish(throwing: URLError(.badURL))
+                    return
                 }
+
+                // Build payload once
+                var payload: [[String: String]] = []
+                let personaPrompt = PersonaStore.activePromptOnDisk()
+                var systemPrompt = personaPrompt
+                    ?? (settings.string(forKey: Defaults.systemKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let memoryContext = await MemoryService.shared.promptContext()
+                if !memoryContext.isEmpty {
+                    systemPrompt += memoryContext
+                }
+                if !systemPrompt.isEmpty {
+                    payload.append(["role": "system", "content": systemPrompt])
+                }
+                for message in messages {
+                    payload.append(["role": message.role.rawValue, "content": message.content])
+                }
+
+                let body: [String: Any] = [
+                    "model": settings.string(forKey: Defaults.modelKey) ?? Defaults.model,
+                    "messages": payload,
+                    "stream": true,
+                    "temperature": (settings.object(forKey: Defaults.temperatureKey) as? Double) ?? Defaults.temperature,
+                ]
+
+                // Try each server in order
+                var lastError: Error = URLError(.cannotConnectToHost)
+                for base in servers {
+                    guard let url = URL(string: "v1/chat/completions", relativeTo: base) else { continue }
+                    do {
+                        var request = URLRequest(url: url.absoluteURL)
+                        request.httpMethod = "POST"
+                        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                        request.timeoutInterval = 15
+
+                        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                            throw URLError(.badServerResponse)
+                        }
+
+                        for try await line in bytes.lines {
+                            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard trimmed.hasPrefix("data: ") else { continue }
+                            let jsonStr = String(trimmed.dropFirst(6))
+                            if jsonStr == "[DONE]" { break }
+                            guard let data = jsonStr.data(using: .utf8),
+                                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                  let choices = json["choices"] as? [[String: Any]],
+                                  let delta = choices.first?["delta"] as? [String: Any],
+                                  let content = delta["content"] as? String,
+                                  !content.isEmpty else { continue }
+                            continuation.yield(content)
+                        }
+                        continuation.finish()
+                        return  // Success
+                    } catch {
+                        lastError = error
+                        continue  // Try next server
+                    }
+                }
+                continuation.finish(throwing: lastError)
             }
             continuation.onTermination = { _ in task.cancel() }
         }
