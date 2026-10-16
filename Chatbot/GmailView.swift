@@ -68,10 +68,16 @@ struct GmailView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button("Sign in with Google") {
+            Button(action: {
                 gmail.signIn()
+            }) {
+                Text("Sign in with Google")
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
             }
-            .buttonStyle(.borderedProminent)
+            .background(Color.blue)
+            .cornerRadius(25)
         }
     }
 
