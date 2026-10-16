@@ -32,12 +32,14 @@ final class ProactiveService: ObservableObject {
     // MARK: - Scheduled texts (via Mac bridge)
 
     /// Schedule a text to be sent by the bridge at the given date.
-    func scheduleText(message: String, at date: Date) async throws {
+    /// - Parameter recurring: "daily", "weekly", or nil for one-time.
+    func scheduleText(message: String, at date: Date, recurring: String? = nil) async throws {
         guard let url = schedulerURL else { throw ProactiveError.noScheduler }
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "message": message,
             "at": date.timeIntervalSince1970
         ]
+        if let recurring { payload["recurring"] = recurring }
         let body = try JSONSerialization.data(withJSONObject: payload)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -78,9 +80,9 @@ final class ProactiveService: ObservableObject {
 
     // MARK: - Natural language parsing
 
-    /// Parse "text me in X minutes/hours" or "call me in X" from user input.
-    /// Returns (action, message, date) if matched, nil otherwise.
-    func parseScheduleRequest(_ input: String) -> (action: ScheduleAction, message: String, date: Date)? {
+    /// Parse "text me in X minutes/hours", "text me every day at 9am", etc.
+    /// Returns (action, message, date, recurring) if matched, nil otherwise.
+    func parseScheduleRequest(_ input: String) -> (action: ScheduleAction, message: String, date: Date, recurring: String?)? {
         let lower = input.lowercased()
 
         // Determine action
@@ -89,7 +91,15 @@ final class ProactiveService: ObservableObject {
         guard isText || isCall else { return nil }
         let action: ScheduleAction = isText ? .text : .call
 
-        // Parse time: "in X minutes", "in X hours", "at 9am", "tomorrow at 9am"
+        // Detect recurring: "every day", "every morning", "daily", "every week", "weekly"
+        var recurring: String?
+        if lower.contains("every day") || lower.contains("daily") || lower.contains("every morning") {
+            recurring = "daily"
+        } else if lower.contains("every week") || lower.contains("weekly") {
+            recurring = "weekly"
+        }
+
+        // Parse time: "in X minutes", "in X hours", "at 9am", "tomorrow at 9am", "every morning"
         var date: Date?
         if let minutes = extractNumber(after: "in", before: "minute", in: lower) {
             date = Date().addingTimeInterval(Double(minutes) * 60)
@@ -97,6 +107,14 @@ final class ProactiveService: ObservableObject {
             date = Date().addingTimeInterval(Double(hours) * 3600)
         } else if let timeDate = parseAtTime(in: lower) {
             date = timeDate
+        } else if lower.contains("every morning") {
+            // Default to 8am
+            var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+            components.hour = 8
+            components.minute = 0
+            if let morning = Calendar.current.date(from: components) {
+                date = morning < Date() ? Calendar.current.date(byAdding: .day, value: 1, to: morning) : morning
+            }
         }
         guard let targetDate = date else { return nil }
 
@@ -109,7 +127,7 @@ final class ProactiveService: ObservableObject {
             message = isText ? "Scheduled reminder" : "Time for your AI call"
         }
 
-        return (action, message, targetDate)
+        return (action, message, targetDate, recurring)
     }
 
     private func extractNumber(after: String, before: String, in text: String) -> Int? {
