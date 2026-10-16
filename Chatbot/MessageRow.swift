@@ -26,6 +26,6 @@ struct MessageRow: View {
     }
 
     private var bubble: some ShapeStyle {
-        message.isUser ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground))
+        message.isUser ? AnyShapeStyle(Color.blue) : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground))
     }
 }
