@@ -29,9 +29,9 @@ final class ChatStore: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isGenerating else { return conversationID }
 
-        // Check for proactive schedule requests ("text me in...", "call me at...")
-        if let (action, message, date) = ProactiveService.shared.parseScheduleRequest(trimmed) {
-            return handleScheduleRequest(action: action, message: message, date: date, original: trimmed, in: conversationID)
+        // Check for proactive schedule requests ("text me in...", "call me at...", "text me every day...")
+        if let (action, message, date, recurring) = ProactiveService.shared.parseScheduleRequest(trimmed) {
+            return handleScheduleRequest(action: action, message: message, date: date, recurring: recurring, original: trimmed, in: conversationID)
         }
 
         var convo: Conversation
@@ -71,7 +71,7 @@ final class ChatStore: ObservableObject {
         return targetID
     }
 
-    private func handleScheduleRequest(action: ScheduleAction, message: String, date: Date, original: String, in conversationID: UUID?) -> UUID? {
+    private func handleScheduleRequest(action: ScheduleAction, message: String, date: Date, recurring: String?, original: String, in conversationID: UUID?) -> UUID? {
         var convo: Conversation
         if let conversationID, let existing = conversation(id: conversationID) {
             convo = existing
@@ -95,9 +95,10 @@ final class ChatStore: ObservableObject {
             do {
                 switch action {
                 case .text:
-                    try await ProactiveService.shared.scheduleText(message: message, at: date)
+                    try await ProactiveService.shared.scheduleText(message: message, at: date, recurring: recurring)
                     await MainActor.run {
-                        self.appendTo(targetID, ChatMessage(role: .assistant, content: "Done — I'll text you at \(dateStr): \(message)"))
+                        let recurStr = recurring == "daily" ? " every day" : (recurring == "weekly" ? " every week" : "")
+                        self.appendTo(targetID, ChatMessage(role: .assistant, content: "Done — I'll text you\(recurStr) at \(dateStr): \(message)"))
                         self.save()
                     }
                 case .call:
