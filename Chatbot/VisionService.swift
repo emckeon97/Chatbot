@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import Foundation
 import UIKit
 
@@ -85,3 +86,5 @@ enum VisionError: Error, LocalizedError {
         "Could not encode image."
     }
 }
+
+#endif
