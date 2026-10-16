@@ -46,6 +46,15 @@
 	<string>Chatbot needs microphone access for voice calls.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Chatbot needs speech recognition for voice calls.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.294125895152-cmamrfum6a6eu44gp3nd52h7amtl9q08</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
