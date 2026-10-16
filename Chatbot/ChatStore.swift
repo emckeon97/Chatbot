@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 import SwiftUI
 
 @MainActor
@@ -215,12 +217,14 @@ final class ChatStore: ObservableObject {
         }
         return targetID
     }
+    #endif
 
     func stop() {
         streamTask?.cancel()
     }
 
     /// Send an image to the vision model (moondream fallback).
+    #if canImport(UIKit)
     @discardableResult
     func sendImage(_ image: UIImage, prompt: String, in conversationID: UUID?) -> UUID? {
         var convo: Conversation
