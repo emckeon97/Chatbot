@@ -7,6 +7,7 @@ final class LlamaService {
         static let temperatureKey = "temperature"
         static let systemKey = "systemPrompt"
         static let server = "http://192.168.0.102:11434"
+        static let tailscaleKey = "tailscaleServer"
         static let model = "dolphin-llama3:8b"
         static let temperature = 0.7
     }
@@ -38,18 +39,35 @@ final class LlamaService {
     }
 
     /// Streams tokens from an OpenAI-compatible local server (Ollama or llama.cpp).
+    /// Resolve server URLs to try: primary first, then Tailscale fallback.
+    static func serverURLs() -> [URL] {
+        let settings = UserDefaults.standard
+        var urls: [URL] = []
+        let primary = (settings.string(forKey: Defaults.serverKey) ?? Defaults.server)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = Self.normalizedURL(primary) { urls.append(url) }
+        let tailscale = (settings.string(forKey: Defaults.tailscaleKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tailscale.isEmpty, let url = Self.normalizedURL(tailscale), !urls.contains(url) {
+            urls.append(url)
+        }
+        return urls
+    }
+
+    private static func normalizedURL(_ server: String) -> URL? {
+        var s = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !s.hasPrefix("http://") && !s.hasPrefix("https://") { s = "http://" + s }
+        while s.hasSuffix("/") { s.removeLast() }
+        return URL(string: s)
+    }
+
     func stream(messages: [ChatMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     let settings = UserDefaults.standard
-                    var server = (settings.string(forKey: Defaults.serverKey) ?? Defaults.server)
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !server.hasPrefix("http://") && !server.hasPrefix("https://") {
-                        server = "http://" + server
-                    }
-                    while server.hasSuffix("/") { server.removeLast() }
-                    guard let base = URL(string: server),
+                    let servers = Self.serverURLs()
+                    guard let base = servers.first,
                           let url = URL(string: "v1/chat/completions", relativeTo: base) else {
                         throw URLError(.badURL)
                     }
