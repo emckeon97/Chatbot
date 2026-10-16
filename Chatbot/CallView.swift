@@ -38,16 +38,29 @@ struct CallView: View {
                         .lineLimit(3)
                 }
                 Spacer()
-                // End call
-                Button {
-                    callManager.endCall()
-                    dismiss()
-                } label: {
-                    Image(systemName: "phone.down.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.white)
-                        .padding(24)
-                        .background(Color.red, in: Circle())
+                HStack(spacing: 32) {
+                    // Send transcript
+                    Button {
+                        callManager.submitTranscript()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white)
+                            .padding(24)
+                            .background(Color.blue, in: Circle())
+                    }
+                    .disabled(callManager.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    // End call
+                    Button {
+                        callManager.endCall()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "phone.down.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white)
+                            .padding(24)
+                            .background(Color.red, in: Circle())
+                    }
                 }
                 .padding(.bottom, 48)
             }
