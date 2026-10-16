@@ -171,12 +171,10 @@ final class ProactiveService: ObservableObject {
         if date < Date() {
             date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
         }
-        // Check for "tomorrow"
-        if text.contains("tomorrow"), let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: date) {
-            // Already handled above if time passed; if "tomorrow" explicit and time hasn't passed, use tomorrow
-            let todayAtTime = Calendar.current.date(from: components) ?? date
-            if todayAtTime > Date() {
-                return Calendar.current.date(byAdding: .day, value: 1, to: todayAtTime)
+        // If "tomorrow" explicitly mentioned, push to tomorrow
+        if text.contains("tomorrow") {
+            if let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: date) {
+                return tomorrowDate
             }
         }
         return date
