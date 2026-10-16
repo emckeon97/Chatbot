@@ -88,8 +88,12 @@ final class ProactiveService: ObservableObject {
         // Determine action
         let isText = lower.contains("text me")
         let isCall = lower.contains("call me")
-        guard isText || isCall else { return nil }
-        let action: ScheduleAction = isText ? .text : .call
+        let isRemind = lower.contains("remind me") || lower.contains("notify me")
+        guard isText || isCall || isRemind else { return nil }
+        let action: ScheduleAction
+        if isText { action = .text }
+        else if isCall { action = .call }
+        else { action = .notify }
 
         // Detect recurring: "every day", "every morning", "daily", "every week", "weekly"
         var recurring: String?
@@ -180,7 +184,7 @@ final class ProactiveService: ObservableObject {
 }
 
 enum ScheduleAction {
-    case text, call
+    case text, call, notify
 }
 
 enum ProactiveError: Error, LocalizedError {
