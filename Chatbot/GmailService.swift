@@ -1,4 +1,6 @@
 import Foundation
+import GoogleSignIn
+import UIKit
 
 /// Gmail API service. Requires GoogleSignIn SDK added via SPM in Xcode.
 /// Add the reversed client ID as a URL scheme in Info.plist.
@@ -17,10 +19,38 @@ final class GmailService: ObservableObject {
     private init() {}
 
     // MARK: - Auth
-    // Call this from a UIViewController context after adding GoogleSignIn SDK:
-    //   GIDSignIn.sharedInstance.signIn(withPresenting: vc) { result, error in ... }
-    // Scopes: https://www.googleapis.com/auth/gmail.readonly
-    //         https://www.googleapis.com/auth/gmail.send
+
+    func signIn() {
+        guard let rootVC = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })?.rootViewController else {
+            errorMessage = "Could not find presenting view controller."
+            return
+        }
+        GIDSignIn.sharedInstance.signIn(
+            withPresenting: rootVC,
+            hint: nil,
+            additionalScopes: [
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.send"
+            ]
+        ) { [weak self] result, error in
+            Task { @MainActor in
+                if let error {
+                    self?.errorMessage = error.localizedDescription
+                    return
+                }
+                guard let user = result?.user,
+                      let token = user.accessToken.tokenString as String? else {
+                    self?.errorMessage = "Sign-in failed."
+                    return
+                }
+                self?.setAccessToken(token, email: user.profile?.email)
+                await self?.fetchInbox()
+            }
+        }
+    }
 
     func setAccessToken(_ token: String, email: String?) {
         self.accessToken = token
@@ -29,10 +59,23 @@ final class GmailService: ObservableObject {
     }
 
     func signOut() {
+        GIDSignIn.sharedInstance.signOut()
         accessToken = nil
         userEmail = nil
         isSignedIn = false
         messages = []
+    }
+
+    /// Restore previous sign-in silently.
+    func restoreSignIn() {
+        GIDSignIn.sharedInstance.restorePreviousSignIn { [weak self] user, error in
+            Task { @MainActor in
+                if let user, let token = user.accessToken.tokenString as String? {
+                    self?.setAccessToken(token, email: user.profile?.email)
+                    await self?.fetchInbox()
+                }
+            }
+        }
     }
 
     // MARK: - API
