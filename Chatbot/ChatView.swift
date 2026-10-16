@@ -52,6 +52,11 @@ struct ChatView: View {
         .navigationTitle(titleText)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                NavigationLink {
+                    GmailView()
+                } label: {
+                    Image(systemName: "envelope.fill")
+                }
                 Button {
                     showCall = true
                 } label: {
