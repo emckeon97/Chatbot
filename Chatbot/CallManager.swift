@@ -71,6 +71,16 @@ final class CallManager: ObservableObject {
         }
     }
 
+    private var silenceTimer: Task<Void, Never>?
+
+    /// Manually submit the current transcript (for the call UI button).
+    func submitTranscript() {
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        silenceTimer?.cancel()
+        handleUserSpeech(text)
+    }
+
     private func startListening() {
         guard callActive, !isListening, !isSpeaking else { return }
 
@@ -113,7 +123,21 @@ final class CallManager: ObservableObject {
                     self.transcript = text
                     if result.isFinal, !text.trimmingCharacters(in: .whitespaces).isEmpty, !finalHandled {
                         finalHandled = true
+                        self.silenceTimer?.cancel()
                         self.handleUserSpeech(text)
+                    } else if !text.trimmingCharacters(in: .whitespaces).isEmpty, !finalHandled {
+                        // Reset silence timer on new speech; auto-submit after 1.5s of silence
+                        self.silenceTimer?.cancel()
+                        self.silenceTimer = Task {
+                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            guard !Task.isCancelled else { return }
+                            await MainActor.run {
+                                if !finalHandled {
+                                    finalHandled = true
+                                    self.handleUserSpeech(text)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -132,6 +156,8 @@ final class CallManager: ObservableObject {
     }
 
     private func stopListening() {
+        silenceTimer?.cancel()
+        silenceTimer = nil
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
