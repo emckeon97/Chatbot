@@ -45,9 +45,11 @@ struct ChatView: View {
                 onStop: {
                     store.stop()
                 },
+                #if canImport(UIKit)
                 onImage: { image in
                     conversationID = store.sendImage(image, prompt: "What's in this image?", in: conversationID)
                 }
+                #endif
             )
         }
         .background(Color(uiColor: .systemGroupedBackground))
@@ -104,7 +106,9 @@ private struct InputBarView: View {
     let isGenerating: Bool
     let onSend: (String) -> Void
     let onStop: () -> Void
+    #if canImport(UIKit)
     let onImage: (UIImage) -> Void
+    #endif
 
     @State private var draft = ""
     @FocusState private var isFocused: Bool
@@ -112,6 +116,7 @@ private struct InputBarView: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            #if canImport(UIKit)
             Button {
                 showPicker = true
             } label: {
@@ -124,6 +129,7 @@ private struct InputBarView: View {
                     set: { if let img = $0 { onImage(img) } }
                 ))
             }
+            #endif
             TextField("Message", text: $draft, axis: .vertical)
                 .lineLimit(1...4)
                 .padding(10)
@@ -156,6 +162,7 @@ private struct InputBarView: View {
 }
 
 /// UIImagePickerController wrapper for photo selection.
+#if canImport(UIKit)
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var image: UIImage?
     @Environment(\.dismiss) private var dismiss
@@ -189,3 +196,4 @@ struct ImagePicker: UIViewControllerRepresentable {
         }
     }
 }
+#endif
