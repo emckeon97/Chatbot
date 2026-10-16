@@ -146,12 +146,40 @@ final class CallManager: ObservableObject {
         Task {
             do {
                 var fullResponse = ""
+                var sentenceBuffer = ""
+                var firstToken = true
                 for try await token in llama.stream(messages: conversation) {
+                    if firstToken {
+                        firstToken = false
+                        // Start speaking as soon as we have a sentence
+                        await MainActor.run { self.status = "Speaking..." ; self.isSpeaking = true }
+                    }
                     fullResponse += token
+                    sentenceBuffer += token
+                    // Speak complete sentences as they arrive
+                    if sentenceBuffer.contains(where: { ".!?".contains($0) }) {
+                        let sentences = splitSentences(sentenceBuffer)
+                        if sentences.count > 1 {
+                            // Speak all but the last (incomplete) sentence
+                            for sentence in sentences.dropLast() {
+                                let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmed.isEmpty {
+                                    await MainActor.run { self.speakChunk(trimmed) }
+                                }
+                            }
+                            sentenceBuffer = sentences.last ?? ""
+                        }
+                    }
+                }
+                // Speak any remaining text
+                let remaining = sentenceBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !remaining.isEmpty {
+                    await MainActor.run { self.speakChunk(remaining) }
                 }
                 let response = fullResponse.trimmingCharacters(in: .whitespacesAndNewlines)
                 conversation.append(ChatMessage(role: .assistant, content: response))
-                await MainActor.run { self.speak(response.isEmpty ? "Sorry, I didn't catch that." : response) }
+                // Wait for speech to finish, then listen again
+                await MainActor.run { self.finishSpeaking() }
             } catch {
                 await MainActor.run {
                     self.status = "Error: \(error.localizedDescription)"
@@ -161,21 +189,41 @@ final class CallManager: ObservableObject {
         }
     }
 
-    private func speak(_ text: String) {
-        stopListening()
-        status = "Speaking..."
-        isSpeaking = true
-        transcript = ""
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        utterance.rate = 0.52
-        utterance.volume = 1.0
+    private func splitSentences(_ text: String) -> [String] {
+        // Simple sentence splitter on . ! ?
+        var sentences: [String] = []
+        var current = ""
+        for char in text {
+            current.append(char)
+            if ".!?".contains(char) {
+                sentences.append(current)
+                current = ""
+            }
+        }
+        if !current.isEmpty {
+            sentences.append(current)
+        }
+        return sentences
+    }
 
+    /// Speak a chunk without stopping (for streaming).
+    private func speakChunk(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = bestVoice()
+        utterance.rate = 0.5
+        utterance.pitchMultiplier = 1.05
+        utterance.volume = 1.0
+        synthesizer.speak(utterance)
+    }
+
+    /// Called after all chunks are queued; resumes listening when done.
+    private func finishSpeaking() {
         let delegate = SpeechDelegate(
             onDone: { [weak self] in
                 Task { @MainActor in
                     self?.isSpeaking = false
                     self?.speechDelegate = nil
+                    self?.status = "Listening..."
                     if self?.callActive == true {
                         self?.startListening()
                     }
@@ -184,7 +232,52 @@ final class CallManager: ObservableObject {
         )
         speechDelegate = delegate
         synthesizer.delegate = delegate
+        // Enqueue a silent marker to trigger completion
+        let marker = AVSpeechUtterance(string: " ")
+        marker.volume = 0
+        synthesizer.speak(marker)
+    }
+
+    /// Full speak (for greetings/errors) — replaces old speak().
+    private func speak(_ text: String) {
+        stopListening()
+        status = "Speaking..."
+        isSpeaking = true
+        transcript = ""
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = bestVoice()
+        utterance.rate = 0.5
+        utterance.pitchMultiplier = 1.05
+        utterance.volume = 1.0
+
+        let delegate = SpeechDelegate(
+            onDone: { [weak self] in
+                Task { @MainActor in
+                    self?.isSpeaking = false
+                    self?.speechDelegate = nil
+                    if self?.callActive == true {
+                        self?.status = "Listening..."
+                        self?.startListening()
+                    }
+                }
+            }
+        )
+        speechDelegate = delegate
+        synthesizer.delegate = delegate
         synthesizer.speak(utterance)
+    }
+
+    /// Pick the best available English voice (prefers premium/enhanced).
+    private func bestVoice() -> AVSpeechSynthesisVoice? {
+        let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
+        // Prefer premium quality, then enhanced, then default
+        if let premium = voices.first(where: { $0.quality == .premium }) {
+            return premium
+        }
+        if let enhanced = voices.first(where: { $0.quality == .enhanced }) {
+            return enhanced
+        }
+        return AVSpeechSynthesisVoice(language: "en-US")
     }
 }
 
