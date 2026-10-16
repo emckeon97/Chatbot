@@ -22,9 +22,12 @@ struct GmailView: View {
             .navigationTitle("Gmail")
             .toolbar {
                 if gmail.isSignedIn {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
                         Button { showCompose = true } label: {
                             Image(systemName: "square.and.pencil")
+                        }
+                        Button { gmail.signOut() } label: {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
                         }
                     }
                 }
@@ -45,7 +48,9 @@ struct GmailView: View {
             }
         }
         .task {
-            if gmail.isSignedIn {
+            if !gmail.isSignedIn {
+                gmail.restoreSignIn()
+            } else {
                 await gmail.fetchInbox()
             }
         }
@@ -64,7 +69,7 @@ struct GmailView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button("Sign in with Google") {
-                showSignInHelp = true
+                gmail.signIn()
             }
             .buttonStyle(.borderedProminent)
         }
