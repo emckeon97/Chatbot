@@ -14,6 +14,9 @@ holds for seven days, so the model keeps its memory across restarts.
 
 Run:  python3 imessage_bridge.py chats   # list every chat the mac knows
       python3 imessage_bridge.py        # start watching
+
+Also runs an HTTP scheduler on port 11435:
+  POST /schedule_text  {"message": "...", "at": unix_timestamp}
 """
 
 import json
@@ -23,6 +26,9 @@ import subprocess
 import sys
 import time
 import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
+from datetime import datetime
 
 # ---------- settings ----------
 USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are answered
@@ -36,6 +42,8 @@ ECHO_WINDOW_SECONDS = 20  # copies of your text landing right after a reply are 
 POLL_SECONDS = 3
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
 MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
+SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.json")
+SCHEDULER_PORT = 11435
 
 # ---------- message reading (database) ----------
 
@@ -178,6 +186,84 @@ def save_history(history: list) -> None:
         print("could not save memory:", error)
 
 
+# ---------- scheduled texts ----------
+
+def load_schedule() -> list:
+    if not os.path.exists(SCHEDULE_FILE):
+        return []
+    try:
+        with open(SCHEDULE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_schedule(items: list) -> None:
+    try:
+        with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        print("could not save schedule:", e)
+
+
+def check_schedule() -> None:
+    """Send any due scheduled texts."""
+    items = load_schedule()
+    now = time.time()
+    remaining = []
+    for item in items:
+        if item.get("at", 0) <= now:
+            try:
+                send(item.get("message", ""))
+                print("sent scheduled text:", item.get("message", "")[:50])
+            except Exception as e:
+                print("scheduled send failed:", e)
+                remaining.append(item)
+        else:
+            remaining.append(item)
+    if len(remaining) != len(items):
+        save_schedule(remaining)
+
+
+class ScheduleHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path == "/schedule_text":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+                message = data.get("message", "").strip()
+                at = float(data.get("at", time.time()))
+                if not message:
+                    raise ValueError("empty message")
+                items = load_schedule()
+                items.append({"message": message, "at": at, "created": time.time()})
+                save_schedule(items)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True}).encode())
+            except Exception as e:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+def start_scheduler_server():
+    def run():
+        server = HTTPServer(("0.0.0.0", SCHEDULER_PORT), ScheduleHandler)
+        print(f"Scheduler listening on port {SCHEDULER_PORT}")
+        server.serve_forever()
+    thread = Thread(target=run, daemon=True)
+    thread.start()
+
+
 # ---------- main loop ----------
 
 def main() -> None:
@@ -210,6 +296,7 @@ def main() -> None:
     CHAT_ID = chat_id
 
     print("Watching chat:", CHAT_ID)
+    start_scheduler_server()
     print("Ctrl-C to stop.")
 
     # Anything already in the chat before startup stays unanswered.
@@ -265,6 +352,7 @@ def main() -> None:
                     print("replied:", reply[:80].replace("\n", " "))
         except Exception as error:
             print("error:", error)
+        check_schedule()
         time.sleep(POLL_SECONDS)
 
 
