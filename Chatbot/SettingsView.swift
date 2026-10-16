@@ -2,10 +2,12 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("serverURL") private var serverURL = "http://localhost:11434"
-    @AppStorage("modelName") private var modelName = "llama3.1"
+    @AppStorage("modelName") private var modelName = "dolphin-llama3:8b"
     @AppStorage("temperature") private var temperature = 0.7
     @AppStorage("systemPrompt") private var systemPrompt = ""
     @ObservedObject private var personaStore = PersonaStore.shared
+    @State private var availableModels: [String] = []
+    @State private var modelsLoading = false
 
     var body: some View {
         Form {
@@ -14,15 +16,36 @@ struct SettingsView: View {
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .onChange(of: serverURL) { _ in Task { await loadModels() } }
             } header: {
                 Text("Server")
             } footer: {
                 Text("Ollama listens on port 11434. On your iPhone, use your Mac's network address, like http://192.168.1.20:11434. A llama.cpp server works too (port 8080); both speak the same API.")
             }
             Section("Model") {
-                TextField("llama3.1", text: $modelName)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                if availableModels.isEmpty {
+                    TextField("dolphin-llama3:8b", text: $modelName)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } else {
+                    Picker("Model", selection: $modelName) {
+                        ForEach(availableModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+                HStack {
+                    if modelsLoading {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    }
+                    Button("Refresh models") {
+                        Task { await loadModels() }
+                    }
+                    .font(.footnote)
+                    .disabled(modelsLoading)
+                }
                 HStack {
                     Text("Temperature")
                     Slider(value: $temperature, in: 0...1.5, step: 0.1)
@@ -59,12 +82,28 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { Task { await loadModels() } }
+    }
+
+    private func loadModels() async {
+        modelsLoading = true
+        defer { modelsLoading = false }
+        do {
+            let models = try await LlamaService().fetchModels()
+            availableModels = models
+            // If the saved model isn't installed anymore, fall back to the first available.
+            if !models.contains(modelName), let first = models.first {
+                modelName = first
+            }
+        } catch {
+            availableModels = []
+        }
     }
 
     static var endpointSummary: String {
         let settings = UserDefaults.standard
         let server = settings.string(forKey: "serverURL") ?? "http://localhost:11434"
-        let model = settings.string(forKey: "modelName") ?? "llama3.1"
+        let model = settings.string(forKey: "modelName") ?? "dolphin-llama3:8b"
         return "\(model) at \(server)"
     }
 }
