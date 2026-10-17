@@ -252,6 +252,8 @@ Tools:
 - cancel_scheduled | {"index": 0} \u2014 Cancel a scheduled text by its number.
 - remember_fact | {"fact": "..."} \u2014 Save something to permanent memory. Never forgets.
 - recall_facts | {} \u2014 List everything in permanent memory.
+- add_calendar_event | {"title": "...", "when": "tomorrow at 3pm", "duration_min": 60} \u2014 Add event to macOS Calendar.
+- list_calendar_events | {"days": 7} \u2014 List upcoming calendar events.
 - list_email_accounts | {} \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
 - forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
@@ -398,6 +400,54 @@ def _bridge_cancel_scheduled(index):
     return "No scheduled task at number %d." % index
 
 
+# ---------- calendar (macOS Calendar.app via AppleScript) ----------
+
+def _cal_run(script):
+    import subprocess as sp
+    result = sp.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
+    return result.stdout.strip(), result.stderr.strip()
+
+
+def _bridge_cal_add(title, when_str, duration_min=60, notes=""):
+    at = _parse_when(when_str)
+    if not at:
+        return "Couldn't understand '%s'." % when_str
+    from datetime import datetime
+    dt = datetime.fromtimestamp(at)
+    start = dt.strftime("%m/%d/%Y %I:%M:%S %p")
+    from datetime import timedelta
+    end = (dt + timedelta(minutes=duration_min)).strftime("%m/%d/%Y %I:%M:%S %p")
+    title_esc = title.replace('"', '\\"')
+    notes_esc = notes.replace('"', '\\"')
+    script = 'tell application "Calendar"\n'
+    script += 'tell calendar 1\n'
+    script += 'make new event with properties {summary:"%s", start date:date "%s", end date:date "%s", description:"%s"}\n' % (title_esc, start, end, notes_esc)
+    script += 'end tell\nend tell'
+    out, err = _cal_run(script)
+    if err:
+        return "Calendar error: %s" % err[:200]
+    return "Added '%s' to your calendar for %s, sir." % (title, dt.strftime("%a %b %d at %I:%M %p"))
+
+
+def _bridge_cal_list(days=7):
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    start = now.strftime("%m/%d/%Y %I:%M:%S %p")
+    end = (now + timedelta(days=days)).strftime("%m/%d/%Y %I:%M:%S %p")
+    script = 'tell application "Calendar"\nset eventList to {}\n'
+    script += 'repeat with cal in calendars\n'
+    script += 'set calEvents to (every event of cal whose start date >= date "%s" and start date <= date "%s")\n' % (start, end)
+    script += 'repeat with evt in calEvents\n'
+    script += 'set end of eventList to (summary of evt & " | " & (start date of evt) as string)\n'
+    script += 'end repeat\nend repeat\nreturn eventList\nend tell'
+    out, err = _cal_run(script)
+    if err:
+        return "Calendar error: %s" % err[:200]
+    if not out:
+        return "Nothing on your calendar for the next %d days." % days
+    return "Upcoming events:\n" + out
+
+
 # ---------- long-term memory (permanent facts) ----------
 
 def load_facts():
@@ -508,6 +558,11 @@ def execute_tool(name, args):
             except Exception as ex:
                 out.append("%s: not connected (%s)" % (label, str(ex)[:60]))
         return "Email accounts:\n" + "\n".join("- " + l for l in out)
+    if name == "add_calendar_event":
+        return _bridge_cal_add(args.get("title", ""), args.get("when", ""),
+                               int(args.get("duration_min", 60)), args.get("notes", ""))
+    if name == "list_calendar_events":
+        return _bridge_cal_list(int(args.get("days", 7)))
     if name == "schedule_text":
         return _bridge_schedule(args.get("message", ""), args.get("when", ""), args.get("recurring", "none"))
     if name == "list_scheduled":
