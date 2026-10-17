@@ -21,6 +21,11 @@ Also runs an HTTP scheduler on port 11435:
 
 import json
 import re
+try:
+    import gmail_service
+    GMAIL_AVAILABLE = True
+except ImportError:
+    GMAIL_AVAILABLE = False
 import os
 import sqlite3
 import subprocess
@@ -322,6 +327,72 @@ def start_scheduler_server():
     thread.start()
 
 
+
+# ---------- email commands ----------
+
+def try_email_command(text: str):
+    """Returns a reply string if text is an email command, else None."""
+    if not GMAIL_AVAILABLE:
+        return None
+    low = text.lower().strip()
+
+    # "check my email" / "any new emails" / "what's in my inbox"
+    if re.search(r'\b(check|read|show|any|new)\b.*\b(email|mail|inbox)\b', low) or \
+       re.search(r'\b(email|mail|inbox)\b.*\b(check|new|latest|unread)\b', low):
+        try:
+            emails = gmail_service.list_inbox(5)
+        except RuntimeError:
+            return "Gmail isn't connected yet, sir. Run python3 gmail_setup.py on the Mac."
+        except Exception as e:
+            return f"Couldn't reach Gmail: {e}"
+        if not emails:
+            return "Inbox is empty, sir. Enjoy the silence."
+        lines = []
+        for i, (mid, frm, subj, date, snip) in enumerate(emails, 1):
+            # Trim long from fields
+            frm_short = frm.split("<")[0].strip().strip('"') or frm
+            lines.append(f"{i}. {frm_short}: {subj}")
+        return "Latest emails, sir:\n" + "\n".join(lines) + "\n\nReply 'read 2' to open one."
+
+    # "read 2" / "read email 1" / "open 3"
+    m = re.match(r'^(read|open)\s+(email\s+)?(\d+)\s*$', low)
+    if m:
+        idx = int(m.group(3)) - 1
+        try:
+            emails = gmail_service.list_inbox(5)
+        except Exception as e:
+            return f"Couldn't reach Gmail: {e}"
+        if 0 <= idx < len(emails):
+            mid, frm, subj, date, snip = emails[idx]
+            try:
+                frm2, subj2, date2, body = gmail_service.read_email(mid)
+            except Exception as e:
+                return f"Couldn't read that email: {e}"
+            body_short = body[:1500] + ("..." if len(body) > 1500 else "")
+            return f"From: {frm2}\nSubject: {subj2}\n\n{body_short}"
+        return "That number's out of range, sir."
+
+    # "send email to X about Y" / "email mom: ..."
+    m = re.match(r'^(send\s+)?email\s+(\S+@\S+)\s*[:\-]?\s*(.+)$', text, re.IGNORECASE)
+    if m:
+        to, rest = m.group(2), m.group(3).strip()
+        # Split subject/body on first " - " or newline, else use rest as body
+        if " - " in rest:
+            subject, body = rest.split(" - ", 1)
+        elif "\n" in rest:
+            subject, body = rest.split("\n", 1)
+        else:
+            subject, body = rest[:60], rest
+        try:
+            gmail_service.send_email(to, subject.strip(), body.strip())
+        except RuntimeError:
+            return "Gmail isn't connected yet, sir. Run python3 gmail_setup.py on the Mac."
+        except Exception as e:
+            return f"Send failed: {e}"
+        return f"Sent to {to}, sir."
+    return None
+
+
 # ---------- main loop ----------
 
 def main() -> None:
@@ -387,10 +458,14 @@ def main() -> None:
                 seen.add(message["id"])
                 history.append({"role": "user", "content": text, "ts": time.time()})
                 prune_history(history)
-                try:
-                    reply = ask(history)
-                except Exception as error:
-                    reply = "(model error: " + str(error) + ")"
+                email_reply = try_email_command(text)
+                if email_reply is not None:
+                    reply = email_reply
+                else:
+                    try:
+                        reply = ask(history)
+                    except Exception as error:
+                        reply = "(model error: " + str(error) + ")"
                 if reply:
                     history.append({"role": "assistant", "content": reply, "ts": time.time()})
                     prune_history(history)
