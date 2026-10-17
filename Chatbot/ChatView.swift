@@ -73,6 +73,16 @@ struct ChatView: View {
                     Image(systemName: "phone.fill")
                 }
                 Button {
+                    store.regenerate(in: conversationID)
+                } label: {
+                    Image(systemName: "arrow.clockwise.circle")
+                }
+                .disabled((conversation?.messages.isEmpty ?? true) || store.isGenerating)
+                ShareLink(item: store.exportText(in: conversationID)) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(conversation?.messages.isEmpty ?? true)
+                Button {
                     store.clearMessages(in: conversationID)
                 } label: {
                     Image(systemName: "arrow.uturn.backward.circle")
