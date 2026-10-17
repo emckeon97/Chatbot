@@ -23,13 +23,8 @@ struct PersonasView: View {
                 List {
                     ForEach(store.personas) { persona in
                         HStack(spacing: 10) {
-                            Button {
-                                store.setActive(persona)
-                            } label: {
-                                Image(systemName: persona.isActive ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(persona.isActive ? Color.accentColor : Color.secondary)
-                            }
-                            .buttonStyle(.borderless)
+                            Image(systemName: persona.isActive ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(persona.isActive ? Color.accentColor : Color.secondary)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(persona.name)
                                     .fontWeight(.medium)
@@ -38,9 +33,17 @@ struct PersonasView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
+                            Spacer()
+                            Button {
+                                editing = persona
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
                         }
                         .contentShape(Rectangle())
-                        .onTapGesture { editing = persona }
+                        .onTapGesture { store.setActive(persona) }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 store.delete(persona)
