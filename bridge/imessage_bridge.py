@@ -344,6 +344,32 @@ def _parse_when(when_str):
         n = int(m.group(1))
         unit = m.group(2)
         return now + (n * 3600 if unit.startswith("hour") or unit == "hr" else n * 60)
+    # Weekday names: "Monday", "next Friday", "Monday at 3pm"
+    weekdays = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+                "friday": 4, "saturday": 5, "sunday": 6}
+    m = _re.search(r"(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm))?", s)
+    if m:
+        target = weekdays[m.group(2)]
+        is_next = bool(m.group(1))
+        today = datetime.now().weekday()
+        days_ahead = (target - today) % 7
+        if days_ahead == 0 and not is_next:
+            days_ahead = 7  # "Monday" on a Monday means next Monday
+        if is_next:
+            days_ahead += 7
+        dt = datetime.now() + timedelta(days=days_ahead)
+        if m.group(3):  # time specified
+            hour = int(m.group(4))
+            minute = int(m.group(5) or 0)
+            ampm = m.group(6)
+            if ampm == "pm" and hour < 12:
+                hour += 12
+            if ampm == "am" and hour == 12:
+                hour = 0
+            dt = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        else:
+            dt = dt.replace(hour=9, minute=0, second=0, microsecond=0)
+        return dt.timestamp()
     m = _re.search(r"(tomorrow\s+)?at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", s)
     if m:
         hour = int(m.group(2))
