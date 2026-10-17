@@ -254,6 +254,12 @@ Tools:
 - recall_facts | {} \u2014 List everything in permanent memory.
 - add_calendar_event | {"title": "...", "when": "tomorrow at 3pm", "duration_min": 60} \u2014 Add event to macOS Calendar.
 - list_calendar_events | {"days": 7} \u2014 List upcoming calendar events.
+- web_search | {"query": "...", "count": 5} \u2014 Search the web.
+- get_weather | {"location": "Charlotte"} \u2014 Current weather.
+- get_news | {"count": 5} \u2014 Top news headlines.
+- get_stock | {"symbol": "AAPL"} \u2014 Stock price.
+- get_crypto | {"symbol": "BTC"} \u2014 Crypto price.
+- define_word | {"word": "..."} \u2014 Dictionary definition.
 - list_email_accounts | {} \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
 - forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
@@ -457,6 +463,124 @@ def _bridge_cal_list(days=7):
     return "Upcoming events:\n" + out
 
 
+
+# ---------- info tools (web search, weather, news, stocks, crypto, dictionary) ----------
+
+def _http_get(url, timeout=15):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def _bridge_web_search(query, count=5):
+    import urllib.parse, re
+    q = urllib.parse.quote(query)
+    url = "https://html.duckduckgo.com/html/?q=%s" % q
+    try:
+        html = _http_get(url)
+    except Exception as e:
+        return "Search failed: %s" % e
+    results = []
+    for m in re.finditer(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL):
+        title = re.sub(r'<[^>]+>', '', m.group(2)).strip()
+        snippet = re.sub(r'<[^>]+>', '', m.group(3)).strip()[:200]
+        results.append("- %s: %s" % (title, snippet))
+        if len(results) >= count:
+            break
+    if not results:
+        return "No results for '%s'." % query
+    return "Search results for '%s':\n" % query + "\n".join(results)
+
+
+def _bridge_weather(location="Charlotte"):
+    import urllib.parse, json as js
+    try:
+        # Geocode
+        geo_url = "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1" % urllib.parse.quote(location)
+        geo = js.loads(_http_get(geo_url))
+        if not geo.get("results"):
+            return "Couldn't find '%s'." % location
+        lat = geo["results"][0]["latitude"]
+        lon = geo["results"][0]["longitude"]
+        name = geo["results"][0].get("name", location)
+        # Weather
+        w_url = "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit" % (lat, lon)
+        w = js.loads(_http_get(w_url))
+        cur = w["current"]
+        codes = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "foggy", 48: "foggy",
+                 51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
+                 71: "light snow", 73: "snow", 75: "heavy snow", 80: "light showers", 81: "showers", 82: "heavy showers",
+                 95: "thunderstorm"}
+        desc = codes.get(cur.get("weather_code", 0), "unknown")
+        return "%s: %s°F, %s, wind %s mph." % (name, round(cur["temperature_2m"]), desc, round(cur.get("wind_speed_10m", 0)))
+    except Exception as e:
+        return "Weather failed: %s" % e
+
+
+def _bridge_news(count=5):
+    import re
+    try:
+        xml = _http_get("http://feeds.bbci.co.uk/news/rss.xml")
+        items = re.findall(r'<title>(.*?)</title>', xml)[1:count+1]
+        if not items:
+            return "No headlines found."
+        return "Top headlines:\n" + "\n".join("- %s" % re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', t).strip() for t in items)
+    except Exception as e:
+        return "News failed: %s" % e
+
+
+def _bridge_stock(symbol):
+    import json as js
+    try:
+        url = "https://stooq.com/q/l/?s=%s.us&f=sd2t2ohlcv&h&e=csv" % symbol.lower()
+        csv = _http_get(url).strip().split("\n")
+        if len(csv) < 2:
+            return "Couldn't find '%s'." % symbol
+        parts = csv[1].split(",")
+        price = parts[6] if len(parts) > 6 else "?"
+        change = parts[7] if len(parts) > 7 else ""
+        return "%s: $%s (%s)" % (symbol.upper(), price, change)
+    except Exception as e:
+        return "Stock lookup failed: %s" % e
+
+
+def _bridge_crypto(symbol):
+    import json as js, urllib.parse
+    mapping = {"btc": "bitcoin", "eth": "ethereum", "doge": "dogecoin", "sol": "solana", "xrp": "ripple"}
+    coin = mapping.get(symbol.lower(), symbol.lower())
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=%s&vs_currencies=usd&include_24hr_change=true" % urllib.parse.quote(coin)
+        data = js.loads(_http_get(url))
+        if coin not in data:
+            return "Couldn't find '%s'." % symbol
+        price = data[coin]["usd"]
+        change = data[coin].get("usd_24h_change", 0)
+        return "%s: $%s (%+.1f%% 24h)" % (symbol.upper(), f"{price:,.2f}", change)
+    except Exception as e:
+        return "Crypto lookup failed: %s" % e
+
+
+def _bridge_define(word):
+    import json as js, urllib.parse
+    try:
+        url = "https://api.dictionaryapi.dev/api/v2/entries/en/%s" % urllib.parse.quote(word)
+        data = js.loads(_http_get(url))
+        if not data or not isinstance(data, list):
+            return "No definition for '%s'." % word
+        meanings = data[0].get("meanings", [])
+        if not meanings:
+            return "No definition for '%s'." % word
+        defs = []
+        for m in meanings[:2]:
+            pos = m.get("partOfSpeech", "")
+            d = m.get("definitions", [{}])[0].get("definition", "")
+            defs.append("%s: %s" % (pos, d))
+        return "%s — %s" % (word, "; ".join(defs))
+    except Exception as e:
+        return "Dictionary failed: %s" % e
+
+
 # ---------- long-term memory (permanent facts) ----------
 
 def load_facts():
@@ -585,6 +709,18 @@ def execute_tool(name, args):
                                int(args.get("duration_min", 60)), args.get("notes", ""))
     if name == "list_calendar_events":
         return _bridge_cal_list(int(args.get("days", 7)))
+    if name == "web_search":
+        return _bridge_web_search(args.get("query", ""), int(args.get("count", 5)))
+    if name == "get_weather":
+        return _bridge_weather(args.get("location", "Charlotte"))
+    if name == "get_news":
+        return _bridge_news(int(args.get("count", 5)))
+    if name == "get_stock":
+        return _bridge_stock(args.get("symbol", ""))
+    if name == "get_crypto":
+        return _bridge_crypto(args.get("symbol", ""))
+    if name == "define_word":
+        return _bridge_define(args.get("word", ""))
     if name == "schedule_text":
         return _bridge_schedule(args.get("message", ""), args.get("when", ""), args.get("recurring", "none"))
     if name == "list_scheduled":
