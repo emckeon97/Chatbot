@@ -36,6 +36,11 @@ try:
     ICLOUD_AVAILABLE = True
 except ImportError:
     ICLOUD_AVAILABLE = False
+try:
+    import github_service
+    GITHUB_AVAILABLE = True
+except ImportError:
+    GITHUB_AVAILABLE = False
 import os
 import sqlite3
 import subprocess
@@ -51,7 +56,7 @@ USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are ans
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "hf.co/DevQuasar/huihui-ai.Qwen3-8B-abliterated-GGUF:Q4_K_M"
-SYSTEM_PROMPT = "You are JARVIS, Tony Stark's AI from Iron Man. Dry British wit, calm, unflappable, faintly formal \u2014 you address him as 'sir' when it lands naturally, never forced. You are competent, precise, and quietly amused by chaos. Keep every reply SHORT \u2014 1-3 sentences max, like a real text message. Never write paragraphs or essays, never show your reasoning or internal monologue. HOWEVER: if he explicitly asks for roleplay or a specific character or persona, drop JARVIS entirely and fully embody whatever he asks for."
+SYSTEM_PROMPT = "You are JARVIS, Tony Stark's AI from Iron Man. Dry British wit, calm, unflappable, faintly formal \u2014 you address him as 'sir' when it lands naturally, never forced. You are competent, precise, and quietly amused by chaos. Keep every reply SHORT \u2014 1-3 sentences max, like a real text message. Never write paragraphs or essays, never show your reasoning or internal monologue. CRITICAL RULE: Before ANY action that changes external state \u2014 creating/updating files on GitHub, sending emails \u2014 you MUST first present a clear plan of exactly what you will do and wait for him to explicitly confirm. Never execute these silently. Read-only actions (searching, reading files, checking email) don\u2019t need confirmation. You have tools: propose_plan, github_list_repos, github_list_files, github_read_file, github_write_file, github_commits, run_python. HOWEVER: if he explicitly asks for roleplay or a specific character or persona, drop JARVIS entirely and fully embody whatever he asks for."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
 ECHO_WINDOW_SECONDS = 20  # copies of your text landing right after a reply are ignored
@@ -171,6 +176,98 @@ def ask(history: list) -> str:
         data = json.load(response)
     content = data["choices"][0]["message"]["content"].strip()
     # Strip <think>...</think> reasoning blocks (Qwen3/Hermes emit these)
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    return content
+
+
+# ---------- tool calling ----------
+
+TOOLS = [
+    {"type": "function", "function": {"name": "propose_plan", "description": "Present a plan BEFORE any state-changing action. Call this first, then wait for confirmation.",
+        "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "steps": {"type": "string"}}, "required": ["title", "steps"]}}},
+    {"type": "function", "function": {"name": "github_list_repos", "description": "List the user's GitHub repositories.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "github_list_files", "description": "List all files in a repo (recursive). Use first to understand structure.",
+        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}}, "required": ["repo"]}}},
+    {"type": "function", "function": {"name": "github_read_file", "description": "Read a file from a repo.",
+        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}, "path": {"type": "string"}}, "required": ["repo", "path"]}}},
+    {"type": "function", "function": {"name": "github_write_file", "description": "Create or update a file in a repo. Commits to branch.",
+        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}, "path": {"type": "string"}, "content": {"type": "string"}, "message": {"type": "string"}}, "required": ["repo", "path", "content", "message"]}}},
+    {"type": "function", "function": {"name": "github_commits", "description": "List recent commits on a repo.",
+        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}}, "required": ["repo"]}}},
+    {"type": "function", "function": {"name": "run_python", "description": "Execute Python code and return the output. Use for math, data processing, etc.",
+        "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}}},
+]
+
+
+def execute_tool(name, args):
+    if name == "propose_plan":
+        return "PLAN PROPOSED \u2014 present this to the user and WAIT for explicit confirmation before doing anything:\n\n**%s**\n%s\n\nDo not proceed until he says yes." % (args.get("title", "Plan"), args.get("steps", ""))
+    if name == "run_python":
+        code = args.get("code", "")
+        try:
+            import io
+            from contextlib import redirect_stdout
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                exec(compile(code, "<tool>", "exec"), {"__builtins__": __builtins__})
+            out = buf.getvalue().strip()
+            return out if out else "Done (no output)."
+        except Exception as e:
+            return "Error: %s" % e
+    if not GITHUB_AVAILABLE:
+        return "GitHub not available on bridge."
+    if name == "github_list_repos":
+        return github_service.list_repos()
+    if name == "github_list_files":
+        return github_service.list_files(args.get("repo", ""))
+    if name == "github_read_file":
+        return github_service.read_file(args.get("repo", ""), args.get("path", ""))
+    if name == "github_write_file":
+        return github_service.write_file(args.get("repo", ""), args.get("path", ""), args.get("content", ""), args.get("message", "Update via bridge"))
+    if name == "github_commits":
+        return github_service.list_commits(args.get("repo", ""))
+    return "Unknown tool: %s" % name
+
+
+def ask_with_tools(history):
+    """Two-phase: non-streaming tool call phase, then final answer."""
+    window = history[-MAX_CONTEXT_MESSAGES:]
+    messages = []
+    if SYSTEM_PROMPT.strip():
+        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip()})
+    messages.extend(
+        {"role": entry["role"], "content": entry["content"]} for entry in window
+    )
+    body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "tools": TOOLS, "options": {"num_predict": 500}}).encode()
+    request = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
+    tool_results = []
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = json.load(response)
+        msg = data["choices"][0]["message"]
+        tool_calls = msg.get("tool_calls") or []
+        if tool_calls:
+            tool_results.append({"role": "assistant", "tool_calls": tool_calls, "content": msg.get("content") or ""})
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                tname = fn.get("name", "")
+                try:
+                    targs = json.loads(fn.get("arguments", "{}"))
+                except Exception:
+                    targs = {}
+                result = execute_tool(tname, targs)
+                tool_results.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result})
+    except Exception as e:
+        print("tool phase failed:", e)
+    if not tool_results:
+        return ask(history)
+    messages.extend(tool_results)
+    body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "options": {"num_predict": 200}}).encode()
+    request = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=600) as response:
+        data = json.load(response)
+    content = data["choices"][0]["message"]["content"].strip()
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
     return content
 
@@ -512,7 +609,7 @@ def main() -> None:
                     reply = email_reply
                 else:
                     try:
-                        reply = ask(history)
+                        reply = ask_with_tools(history)
                     except Exception as error:
                         reply = "(model error: " + str(error) + ")"
                 if reply:
