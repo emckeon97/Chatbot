@@ -57,6 +57,11 @@ final class ChatStore: ObservableObject {
             return handleCalendar(kind: kind, rest: rest, original: trimmed, in: conversationID)
         }
 
+        // Info: stocks, crypto, news, dictionary
+        if let (kind, arg) = InfoService.shared.parse(trimmed) {
+            return handleInfo(kind: kind, arg: arg, original: trimmed, in: conversationID)
+        }
+
         var convo: Conversation
         if let conversationID, let existing = conversation(id: conversationID) {
             convo = existing
@@ -140,6 +145,39 @@ final class ChatStore: ObservableObject {
                 result = await CalendarService.shared.listToday()
             } else {
                 result = await CalendarService.shared.addEvent(rest)
+            }
+            await MainActor.run {
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
+                self.isGenerating = false
+                self.generatingIn = nil
+                self.save()
+            }
+        }
+        return targetID
+    }
+
+    private func handleInfo(kind: String, arg: String, original: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
+        upsert(convo)
+        let targetID = convo.id
+        isGenerating = true
+        generatingIn = targetID
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            let result: String
+            switch kind {
+            case "stock": result = await InfoService.shared.stock(arg)
+            case "crypto": result = await InfoService.shared.crypto(arg)
+            case "news": result = await InfoService.shared.news()
+            case "define": result = await InfoService.shared.define(arg)
+            default: result = "Unknown request."
             }
             await MainActor.run {
                 self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
