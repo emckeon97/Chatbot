@@ -180,24 +180,20 @@ def ask(history: list) -> str:
     return content
 
 
-# ---------- tool calling ----------
+# ---------- tool calling (prompt-based, works on any model) ----------
 
-TOOLS = [
-    {"type": "function", "function": {"name": "propose_plan", "description": "Present a plan BEFORE any state-changing action. Call this first, then wait for confirmation.",
-        "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "steps": {"type": "string"}}, "required": ["title", "steps"]}}},
-    {"type": "function", "function": {"name": "github_list_repos", "description": "List the user's GitHub repositories.",
-        "parameters": {"type": "object", "properties": {}}}},
-    {"type": "function", "function": {"name": "github_list_files", "description": "List all files in a repo (recursive). Use first to understand structure.",
-        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}}, "required": ["repo"]}}},
-    {"type": "function", "function": {"name": "github_read_file", "description": "Read a file from a repo.",
-        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}, "path": {"type": "string"}}, "required": ["repo", "path"]}}},
-    {"type": "function", "function": {"name": "github_write_file", "description": "Create or update a file in a repo. Commits to branch.",
-        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}, "path": {"type": "string"}, "content": {"type": "string"}, "message": {"type": "string"}}, "required": ["repo", "path", "content", "message"]}}},
-    {"type": "function", "function": {"name": "github_commits", "description": "List recent commits on a repo.",
-        "parameters": {"type": "object", "properties": {"repo": {"type": "string"}}, "required": ["repo"]}}},
-    {"type": "function", "function": {"name": "run_python", "description": "Execute Python code and return the output. Use for math, data processing, etc.",
-        "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}}},
-]
+TOOL_DESCRIPTIONS = """You have these tools. To use one, output a line EXACTLY like:
+[TOOL: tool_name | {"arg": "value"}]
+You can call multiple tools, one per line. After I return results, answer the user.
+
+Tools:
+- propose_plan | {"title": "...", "steps": "1. ...\n2. ..."} — Present a plan BEFORE any state-changing action. ALWAYS call this first before github_write_file.
+- github_list_repos | {} — List your GitHub repos.
+- github_list_files | {"repo": "owner/name"} — List all files in a repo.
+- github_read_file | {"repo": "owner/name", "path": "file/path"} — Read a file.
+- github_write_file | {"repo": "owner/name", "path": "file/path", "content": "...", "message": "commit msg"} — Create/update a file.
+- github_commits | {"repo": "owner/name"} — Recent commits.
+- run_python | {"code": "print(2+2)"} — Run Python code, returns output."""
 
 
 def execute_tool(name, args):
@@ -231,44 +227,48 @@ def execute_tool(name, args):
 
 
 def ask_with_tools(history):
-    """Two-phase: non-streaming tool call phase, then final answer."""
+    """Prompt-based tool calling: works on any Ollama version/model."""
     window = history[-MAX_CONTEXT_MESSAGES:]
+    # Phase 1: ask with tool descriptions, parse [TOOL: ...] lines
     messages = []
     if SYSTEM_PROMPT.strip():
-        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip()})
+        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip() + "\n\n" + TOOL_DESCRIPTIONS})
     messages.extend(
         {"role": entry["role"], "content": entry["content"]} for entry in window
     )
-    # Use Ollama native /api/chat for tools (better support than /v1/chat/completions)
-    native_url = OLLAMA_URL.replace("/v1/chat/completions", "/api/chat")
-    body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "tools": TOOLS, "options": {"num_predict": 500}}).encode()
-    request = urllib.request.Request(native_url, data=body, headers={"Content-Type": "application/json"})
-    tool_results = []
+    body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "options": {"num_predict": 800}}).encode()
+    request = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             data = json.load(response)
-        msg = data.get("message", {})
-        tool_calls = msg.get("tool_calls") or []
-        if tool_calls:
-            # Convert native format to OpenAI format for the follow-up
-            oai_calls = []
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                oai_calls.append({
-                    "id": "call_%d" % id(tc),
-                    "type": "function",
-                    "function": {"name": fn.get("name", ""), "arguments": json.dumps(fn.get("arguments", {}))},
-                })
-            tool_results.append({"role": "assistant", "tool_calls": oai_calls, "content": msg.get("content") or ""})
-            for tc, oai in zip(tool_calls, oai_calls):
-                fn = tc.get("function", {})
-                result = execute_tool(fn.get("name", ""), fn.get("arguments", {}))
-                tool_results.append({"role": "tool", "tool_call_id": oai["id"], "content": result})
+        raw = data["choices"][0]["message"]["content"] or ""
     except Exception as e:
         print("tool phase failed:", e)
-    if not tool_results:
         return ask(history)
-    messages.extend(tool_results)
+
+    # Parse tool calls
+    tool_pattern = re.compile(r"\[TOOL:\s*(\w+)\s*\|\s*(\{.*?\})\s*\]", re.DOTALL)
+    calls = tool_pattern.findall(raw)
+    if not calls:
+        # No tools requested — return the raw reply (strip any think blocks)
+        content = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        # Remove any stray tool syntax the model leaked
+        content = re.sub(r"\[TOOL:.*?\]", "", content, flags=re.DOTALL).strip()
+        return content or raw.strip()
+
+    # Execute tools and feed results back
+    results_text = []
+    for tname, targs_json in calls:
+        try:
+            targs = json.loads(targs_json)
+        except Exception:
+            targs = {}
+        result = execute_tool(tname, targs)
+        results_text.append("Tool %s returned:\n%s" % (tname, result))
+
+    # Phase 2: final answer with tool results
+    messages.append({"role": "assistant", "content": raw})
+    messages.append({"role": "user", "content": "Tool results:\n\n" + "\n\n".join(results_text) + "\n\nNow answer the original request using these results. Keep it SHORT (1-3 sentences) unless he asked for detail."})
     body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "options": {"num_predict": 200}}).encode()
     request = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=600) as response:
