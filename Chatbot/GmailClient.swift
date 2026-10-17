@@ -1,6 +1,7 @@
 import Foundation
 
 /// Gmail API via the GoogleAuthService token. Mirrors the bridge's email commands.
+@MainActor
 final class GmailClient {
     static let shared = GmailClient()
 
@@ -28,12 +29,12 @@ final class GmailClient {
         return nil
     }
 
-    private func token() async -> String? {
-        await GoogleAuthService.shared.accessToken
+    private func token() -> String? {
+        GoogleAuthService.shared.accessToken
     }
 
     private func api(_ path: String, method: String = "GET", body: Data? = nil) async throws -> [String: Any] {
-        guard let t = await token() else { throw GmailClientError.notSignedIn }
+        guard let t = token() else { throw GmailClientError.notSignedIn }
         guard let url = URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/\(path)") else {
             throw URLError(.badURL)
         }
