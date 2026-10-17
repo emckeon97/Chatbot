@@ -18,25 +18,7 @@ struct CallView: View {
                 Spacer().frame(height: 60)
 
                 // Contact avatar
-                ZStack {
-                    Circle()
-                        .fill(Color.blue.opacity(0.25))
-                        .frame(width: 110, height: 110)
-                    if callManager.isSpeaking {
-                        Circle()
-                            .stroke(Color.blue.opacity(0.7), lineWidth: 2)
-                            .frame(width: 110, height: 110)
-                            .scaleEffect(1.12)
-                            .opacity(0.5)
-                            .animation(
-                                .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-                                value: callManager.isSpeaking
-                            )
-                    }
-                    Text("J")
-                        .font(.system(size: 44, weight: .medium))
-                        .foregroundStyle(.white)
-                }
+                AvatarView(isSpeaking: callManager.isSpeaking)
 
                 Text("JARVIS")
                     .font(.title2)
@@ -45,10 +27,7 @@ struct CallView: View {
                     .padding(.top, 16)
 
                 // Status / timer
-                Text(callManager.callTimeFormatted)
-                    .font(.body)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .monospacedDigit()
+                CallTimerView(manager: callManager)
                     .padding(.top, 4)
                 Text(callManager.status)
                     .font(.footnote)
@@ -124,5 +103,48 @@ private struct CallButton: View {
                     .foregroundStyle(.white.opacity(0.8))
             }
         }
+    }
+}
+
+/// Isolated avatar so the speaking pulse doesn't re-render with the timer.
+private struct AvatarView: View {
+    let isSpeaking: Bool
+    @State private var pulsing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.blue.opacity(0.25))
+                .frame(width: 110, height: 110)
+            if isSpeaking {
+                Circle()
+                    .stroke(Color.blue.opacity(0.7), lineWidth: 2)
+                    .frame(width: 110, height: 110)
+                    .scaleEffect(pulsing ? 1.12 : 1.0)
+                    .opacity(pulsing ? 0.5 : 0.8)
+                    .animation(.easeInOut(duration: 0.9), value: pulsing)
+                    .onAppear {
+                        pulsing = true
+                    }
+                    .onChange(of: isSpeaking) { _, new in
+                        pulsing = new
+                    }
+            }
+            Text("J")
+                .font(.system(size: 44, weight: .medium))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
+/// Isolated timer so only this text updates every second.
+private struct CallTimerView: View {
+    @ObservedObject var manager: CallManager
+
+    var body: some View {
+        Text(manager.callTimeFormatted)
+            .font(.body)
+            .foregroundStyle(.white.opacity(0.7))
+            .monospacedDigit()
     }
 }
