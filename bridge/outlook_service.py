@@ -10,7 +10,18 @@ import json
 import os
 import urllib.request
 
-TOKEN_PATH = os.path.expanduser("~/.chatbot/outlook_token.json")
+def _token_path():
+    """Check ai user dir first, then current user dir."""
+    candidates = [
+        "/Users/AI/.chatbot/outlook_token.json",
+        os.path.expanduser("~/.chatbot/outlook_token.json"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+TOKEN_PATH = _token_path()
 # Same app registration used by Muse's Outlook connector
 CLIENT_ID = "9ae67231-da3a-476b-a3f4-1f89ccb7eb5b"
 SCOPES = ["Mail.Read", "Mail.Send"]
