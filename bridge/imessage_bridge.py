@@ -35,7 +35,7 @@ USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are ans
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "hf.co/bartowski/NousResearch_Hermes-4-14B-GGUF:Q4_K_M"
-SYSTEM_PROMPT = "You are a helpful chatbot. Be natural and engaging."
+SYSTEM_PROMPT = "You are a helpful chatbot texting a friend. Keep every reply SHORT — 1-3 sentences max, like a real text message. Never write paragraphs or essays. Be natural, warm, and concise."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
 ECHO_WINDOW_SECONDS = 20  # copies of your text landing right after a reply are ignored
@@ -147,7 +147,7 @@ def ask(history: list) -> str:
     messages.extend(
         {"role": entry["role"], "content": entry["content"]} for entry in window
     )
-    body = json.dumps({"model": MODEL, "messages": messages, "stream": False}).encode()
+    body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "options": {"num_predict": 200}}).encode()
     request = urllib.request.Request(
         OLLAMA_URL, data=body, headers={"Content-Type": "application/json"}
     )
