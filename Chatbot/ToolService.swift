@@ -137,7 +137,7 @@ final class ToolService {
             let code = arguments["code"] as? String ?? ""
             return runJS(code)
         case "check_gmail":
-            guard GoogleAuthService.shared.isSignedIn else {
+            guard await GoogleAuthService.shared.isSignedIn else {
                 return "Gmail not connected. Connect in Settings first."
             }
             let emails = await GmailClient.shared.listInbox()
