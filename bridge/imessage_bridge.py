@@ -252,6 +252,7 @@ Tools:
 - cancel_scheduled | {"index": 0} \u2014 Cancel a scheduled text by its number.
 - remember_fact | {"fact": "..."} \u2014 Save something to permanent memory. Never forgets.
 - recall_facts | {} \u2014 List everything in permanent memory.
+- list_email_accounts | {} \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
 - forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
 
@@ -448,7 +449,7 @@ def execute_tool(name, args):
         # Guardrail: refuse to delegate things the bridge can do itself
         tl = (task + " " + details).lower()
         own = [
-            (["email", "inbox", "gmail", "outlook", "icloud", "mail"], "check_email / read_email / send_email"),
+            (["email", "inbox", "gmail", "outlook", "icloud", "mail", "account"], "check_email / read_email / send_email / list_email_accounts"),
             (["github", "repo", "commit", "push", "pull request"], "github_list_repos / github_list_files / github_read_file / github_write_file"),
             (["remind", "schedule", "alarm", "timer", "wake me"], "schedule_text / list_scheduled"),
             (["remember", "forget", "recall", "memory"], "remember_fact / recall_facts / forget_fact"),
@@ -494,6 +495,19 @@ def execute_tool(name, args):
             return "Couldn't find anything matching that."
         save_facts(kept)
         return "Forgot everything matching that."
+    if name == "list_email_accounts":
+        out = []
+        for p, label in [("gmail", "Gmail"), ("outlook", "Outlook"), ("icloud", "iCloud")]:
+            _, svc = _email_svc(p)
+            if not svc:
+                out.append("%s: not installed" % label)
+                continue
+            try:
+                svc.list_inbox(1)
+                out.append("%s: connected" % label)
+            except Exception as ex:
+                out.append("%s: not connected (%s)" % (label, str(ex)[:60]))
+        return "Email accounts:\n" + "\n".join("- " + l for l in out)
     if name == "schedule_text":
         return _bridge_schedule(args.get("message", ""), args.get("when", ""), args.get("recurring", "none"))
     if name == "list_scheduled":
@@ -536,9 +550,15 @@ def ask_with_tools(history):
         print("tool phase failed:", e)
         return ask(history)
 
-    # Parse tool calls
-    tool_pattern = re.compile(r"\[TOOL:\s*(\w+)\s*\|\s*(\{.*?\})\s*\]", re.DOTALL)
-    calls = tool_pattern.findall(raw)
+    # Parse tool calls — flexible for model format variations
+    calls = []
+    for m in re.finditer(r"\[TOOL:\s*(\w+)\s*\|\s*(\{.*?\})\s*\]", raw, re.DOTALL):
+        calls.append((m.group(1), m.group(2)))
+    for m in re.finditer(r'\[DELEGATE_TASK:\s*"([^"]+)"\s*,\s*"details"\s*:\s*"([^"]*)"\s*\]', raw, re.DOTALL):
+        calls.append(("delegate_task", json.dumps({"task": m.group(1), "details": m.group(2)})))
+    for m in re.finditer(r"\[TOOL:\s*(\w+)\s*\]", raw):
+        if not any(c[0] == m.group(1) for c in calls):
+            calls.append((m.group(1), "{}"))
     if not calls:
         # No tools requested — return the raw reply (strip any think blocks)
         content = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
@@ -565,6 +585,8 @@ def ask_with_tools(history):
         data = json.load(response)
     content = data["choices"][0]["message"]["content"].strip()
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    content = re.sub(r"\[TOOL:.*?\]", "", content, flags=re.DOTALL).strip()
+    content = re.sub(r"\[DELEGATE_TASK:.*?\]", "", content, flags=re.DOTALL).strip()
     return content
 
 
