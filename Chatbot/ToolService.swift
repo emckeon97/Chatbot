@@ -77,6 +77,12 @@ final class ToolService {
                                             "content": ["type": "string", "description": "full file content"],
                                             "message": ["type": "string", "description": "commit message"]],
                              "required": ["repo", "path", "content", "message"]]),
+        ToolDef(name: "propose_plan",
+                description: "Present a plan to the user BEFORE taking any state-changing action. Call this first, then wait for the user to confirm before proceeding with writes, sends, or other mutations.",
+                parameters: ["type": "object",
+                             "properties": ["title": ["type": "string", "description": "Short plan title"],
+                                            "steps": ["type": "string", "description": "Numbered list of exactly what you will do"]],
+                             "required": ["title", "steps"]]),
         ToolDef(name: "github_list_files",
                 description: "List all files in a GitHub repo (recursive). Use this first to understand a project's structure.",
                 parameters: ["type": "object",
@@ -150,6 +156,10 @@ final class ToolService {
                 path: arguments["path"] as? String ?? "",
                 content: arguments["content"] as? String ?? "",
                 message: arguments["message"] as? String ?? "Update via Chatbot")
+        case "propose_plan":
+            let title = arguments["title"] as? String ?? "Plan"
+            let steps = arguments["steps"] as? String ?? ""
+            return "PLAN PROPOSED — present this to the user and WAIT for explicit confirmation before doing anything:\n\n**\(title)**\n\(steps)\n\nDo not proceed until the user says yes."
         case "github_list_files":
             return await GitHubService.shared.listFiles(
                 repo: arguments["repo"] as? String ?? "")
