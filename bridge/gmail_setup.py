@@ -8,6 +8,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
+import urllib.error
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -64,8 +65,14 @@ def main():
         "grant_type": "authorization_code",
     }).encode()
     req = urllib.request.Request("https://oauth2.googleapis.com/token", data=body)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        token = json.load(resp)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            token = json.load(resp)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode()[:500]
+        print("Token exchange failed: %s" % err_body)
+        print("\nFix: check that http://127.0.0.1:8765/ is a valid redirect URI for this OAuth client in Google Cloud Console.")
+        return
 
     os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
     with open(TOKEN_PATH, "w") as f:
