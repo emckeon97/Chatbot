@@ -256,23 +256,33 @@ Tools:
 
 
 def _email_svc(provider):
-    """Return (name, module, available) for a provider."""
+    """Return (name, module) for a provider, or (name, None) if not imported."""
     if provider == "gmail":
-        return ("Gmail", gmail_service, GMAIL_AVAILABLE)
+        return ("Gmail", gmail_service if GMAIL_AVAILABLE else None)
     if provider == "outlook":
-        return ("Outlook", outlook_service, OUTLOOK_AVAILABLE)
+        return ("Outlook", outlook_service if OUTLOOK_AVAILABLE else None)
     if provider == "icloud":
-        return ("iCloud", icloud_service, ICLOUD_AVAILABLE)
-    return (provider, None, False)
+        return ("iCloud", icloud_service if ICLOUD_AVAILABLE else None)
+    return (provider, None)
+
+
+def _norm_email(e):
+    """Normalize tuple or dict email into a dict."""
+    if isinstance(e, dict):
+        return {"id": e.get("id", "?"), "from": e.get("from", "?"),
+                "subject": e.get("subject", "(no subject)")}
+    if isinstance(e, (list, tuple)) and len(e) >= 3:
+        return {"id": str(e[0]), "from": str(e[1]), "subject": str(e[2])}
+    return {"id": "?", "from": "?", "subject": str(e)[:60]}
 
 
 def _bridge_check_email(provider, count=5):
     providers = ["gmail", "outlook", "icloud"] if provider == "all" else [provider]
     out = []
     for p in providers:
-        name, svc, avail = _email_svc(p)
-        if not avail:
-            out.append("%s: not set up." % name)
+        name, svc = _email_svc(p)
+        if not svc:
+            out.append("%s: module not loaded." % name)
             continue
         try:
             emails = svc.list_inbox(count)
@@ -281,32 +291,38 @@ def _bridge_check_email(provider, count=5):
             else:
                 lines = ["%s:" % name]
                 for e in emails:
-                    lines.append("- [%s] %s: %s" % (e.get("id", "?"), e.get("from", "?"), e.get("subject", "(no subject)")))
+                    ne = _norm_email(e)
+                    lines.append("- [%s] %s: %s" % (ne["id"], ne["from"], ne["subject"]))
                 out.append("\n".join(lines))
         except Exception as ex:
-            out.append("%s: error %s" % (name, ex))
+            out.append("%s: not connected (%s). Run the setup script for %s." % (name, ex, p))
     return "\n\n".join(out)
 
 
 def _bridge_read_email(provider, msg_id):
-    name, svc, avail = _email_svc(provider)
-    if not avail:
-        return "%s not set up." % name
+    name, svc = _email_svc(provider)
+    if not svc:
+        return "%s module not loaded." % name
     try:
-        return svc.read_email(msg_id)
+        result = svc.read_email(msg_id)
+        if isinstance(result, (list, tuple)) and len(result) >= 4:
+            return "From: %s\nSubject: %s\nDate: %s\n\n%s" % (result[0], result[1], result[2], result[3])
+        if isinstance(result, dict):
+            return str(result)
+        return str(result)
     except Exception as ex:
-        return "Error: %s" % ex
+        return "%s: not connected (%s)." % (name, ex)
 
 
 def _bridge_send_email(provider, to, subject, body):
-    name, svc, avail = _email_svc(provider)
-    if not avail:
-        return "%s not set up." % name
+    name, svc = _email_svc(provider)
+    if not svc:
+        return "%s module not loaded." % name
     try:
         svc.send_email(to, subject, body)
         return "Sent via %s to %s, sir." % (name, to)
     except Exception as ex:
-        return "Error: %s" % ex
+        return "%s: not connected (%s)." % (name, ex)
 
 
 def _parse_when(when_str):
