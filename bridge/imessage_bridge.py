@@ -508,14 +508,26 @@ def _bridge_web_search(query, count=5):
         except Exception:
             pass
 
-    # 2. Wikipedia (reliable, no key)
-    try:
-        w_url = "https://en.wikipedia.org/api/rest_v1/page/summary/%s" % urllib.parse.quote(query.replace(" ", "_"))
-        w_data = js.loads(_http_get(w_url))
-        if w_data.get("extract"):
-            results.append("- Wikipedia: %s" % w_data["extract"][:400])
-    except Exception:
-        pass
+    # 2. Wikipedia (reliable, no key) - try multiple variations
+    import os as _os
+    wiki_tries = [query]
+    # Strip common suffixes like "facts", "info", "about"
+    for suffix in [" facts", " info", " about", " definition", " meaning"]:
+        if query.lower().endswith(suffix):
+            wiki_tries.append(query[:-len(suffix)].strip())
+    # Try singular last word
+    words = query.split()
+    if len(words) > 1:
+        wiki_tries.append(words[-1])
+    for wt in wiki_tries:
+        try:
+            w_url = "https://en.wikipedia.org/api/rest_v1/page/summary/%s" % urllib.parse.quote(wt.replace(" ", "_"))
+            w_data = js.loads(_http_get(w_url))
+            if w_data.get("extract") and w_data.get("type") != "disambiguation":
+                results.append("- Wikipedia (%s): %s" % (wt, w_data["extract"][:400]))
+                break
+        except Exception:
+            continue
 
     # 3. DDG Instant Answer
     try:
