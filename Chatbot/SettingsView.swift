@@ -1,7 +1,10 @@
 import SwiftUI
+import AVFoundation
 
 struct SettingsView: View {
     @ObservedObject private var googleAuth = GoogleAuthService.shared
+    @AppStorage("callVoiceIdentifier") private var callVoiceIdentifier = ""
+    @State private var availableVoices: [AVSpeechSynthesisVoice] = []
     @AppStorage("serverURL") private var serverURL = "http://192.168.0.102:11434"
     @AppStorage("tailscaleServer") private var tailscaleURL = ""
     @AppStorage("modelName") private var modelName = "dolphin-llama3:8b"
@@ -103,6 +106,22 @@ struct SettingsView: View {
             } footer: {
                 Text("Connect your Google account for Gmail access.")
             }
+            Section("Call Voice") {
+                if availableVoices.isEmpty {
+                    Text("No voices found")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Voice", selection: $callVoiceIdentifier) {
+                        Text("Auto (best available)").tag("")
+                        ForEach(availableVoices, id: \.identifier) { voice in
+                            Text("\(voice.name) (\(voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default"))").tag(voice.identifier)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            } footer: {
+                Text("Download premium voices in Settings > Accessibility > Spoken Content > Voices for the most natural sound.")
+            }
             Section {
                 Text("Changes apply from your next message.")
                     .font(.footnote)
@@ -111,7 +130,12 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { Task { await loadModels() } }
+        .onAppear {
+            Task { await loadModels() }
+            availableVoices = AVSpeechSynthesisVoice.speechVoices()
+                .filter { $0.language.hasPrefix("en") }
+                .sorted { $0.name < $1.name }
+        }
     }
 
     private func loadModels() async {
