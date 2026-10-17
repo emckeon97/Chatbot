@@ -34,7 +34,7 @@ from datetime import datetime
 USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are answered
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
-MODEL = "closex/neuraldaredevil-8b-abliterated"
+MODEL = "hf.co/mradermacher/Ministral-Instruct-2410-8B-DPO-RP-GGUF:Q4_K_M"
 SYSTEM_PROMPT = "You are a helpful chatbot. Be natural and engaging."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
