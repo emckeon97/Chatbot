@@ -558,6 +558,19 @@ def execute_tool(name, args):
             except Exception as ex:
                 out.append("%s: not connected (%s)" % (label, str(ex)[:60]))
         return "Email accounts:\n" + "\n".join("- " + l for l in out)
+    # Aliases for model guesses
+    _aliases = {
+        "add_event": "add_calendar_event",
+        "create_event": "add_calendar_event",
+        "create_calendar_event": "add_calendar_event",
+        "get_events": "list_calendar_events",
+        "check_calendar": "list_calendar_events",
+        "get_calendar": "list_calendar_events",
+        "check_email_accounts": "list_email_accounts",
+        "list_accounts": "list_email_accounts",
+    }
+    if name in _aliases:
+        name = _aliases[name]
     if name == "add_calendar_event":
         return _bridge_cal_add(args.get("title", ""), args.get("when", ""),
                                int(args.get("duration_min", 60)), args.get("notes", ""))
