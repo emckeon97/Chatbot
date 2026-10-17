@@ -37,6 +37,20 @@ struct ChatView: View {
                 .scrollDismissesKeyboard(.interactively)
             }
             Divider()
+            #if canImport(UIKit)
+            InputBarView(
+                isGenerating: store.isGenerating && store.generatingIn == conversationID,
+                onSend: { text in
+                    conversationID = store.send(text, in: conversationID)
+                },
+                onStop: {
+                    store.stop()
+                },
+                onImage: { image in
+                    conversationID = store.sendImage(image, prompt: "What's in this image?", in: conversationID)
+                }
+            )
+            #else
             InputBarView(
                 isGenerating: store.isGenerating && store.generatingIn == conversationID,
                 onSend: { text in
@@ -45,12 +59,8 @@ struct ChatView: View {
                 onStop: {
                     store.stop()
                 }
-                #if canImport(UIKit)
-                , onImage: { image in
-                    conversationID = store.sendImage(image, prompt: "What's in this image?", in: conversationID)
-                }
-                #endif
             )
+            #endif
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationBarTitleDisplayMode(.inline)
