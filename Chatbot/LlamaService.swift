@@ -8,6 +8,7 @@ final class LlamaService {
         static let systemKey = "systemPrompt"
         static let server = "http://192.168.0.102:11434"
         static let tailscaleKey = "tailscaleServer"
+        static let tailscaleDefault = "http://100.68.51.79:11434"
         static let model = "dolphin-llama3:8b"
         static let temperature = 0.7
     }
@@ -47,7 +48,7 @@ final class LlamaService {
         let primary = (settings.string(forKey: Defaults.serverKey) ?? Defaults.server)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let url = Self.normalizedURL(primary) { urls.append(url) }
-        let tailscale = (settings.string(forKey: Defaults.tailscaleKey) ?? "")
+        let tailscale = (settings.string(forKey: Defaults.tailscaleKey) ?? Defaults.tailscaleDefault)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !tailscale.isEmpty, let url = Self.normalizedURL(tailscale), !urls.contains(url) {
             urls.append(url)
