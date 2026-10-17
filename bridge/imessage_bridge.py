@@ -481,23 +481,57 @@ def _http_get(url, timeout=15):
 
 
 def _bridge_web_search(query, count=5):
-    import urllib.parse, re
-    q = urllib.parse.quote(query)
-    url = "https://html.duckduckgo.com/html/?q=%s" % q
-    try:
-        html = _http_get(url)
-    except Exception as e:
-        return "Search failed: %s" % e
+    """Multi-source web search: Brave API (if key set), Wikipedia, DDG Instant Answer."""
+    import urllib.parse, json as js, re
     results = []
-    for m in re.finditer(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL):
-        title = re.sub(r'<[^>]+>', '', m.group(2)).strip()
-        snippet = re.sub(r'<[^>]+>', '', m.group(3)).strip()[:200]
-        results.append("- %s: %s" % (title, snippet))
-        if len(results) >= count:
-            break
+
+    # 1. Brave Search API (free tier, needs key in ~/.chatbot/brave_key.txt)
+    brave_key = None
+    for p in ["/Users/AI/.chatbot/brave_key.txt", __import__("os").path.expanduser("~/.chatbot/brave_key.txt")]:
+        try:
+            with open(p) as f:
+                brave_key = f.read().strip()
+                break
+        except:
+            pass
+    if brave_key:
+        try:
+            req = __import__("urllib.request").Request(
+                "https://api.search.brave.com/res/v1/web/search?q=%s&count=%d" % (urllib.parse.quote(query), count),
+                headers={"X-Subscription-Token": brave_key, "Accept": "application/json"})
+            with __import__("urllib.request").urlopen(req, timeout=15) as resp:
+                data = js.loads(resp.read().decode())
+            for r in data.get("web", {}).get("results", [])[:count]:
+                results.append("- %s: %s" % (r.get("title", ""), r.get("description", "")[:200]))
+            if results:
+                return "Search results for '%s':\n" % query + "\n".join(results)
+        except Exception:
+            pass
+
+    # 2. Wikipedia (reliable, no key)
+    try:
+        w_url = "https://en.wikipedia.org/api/rest_v1/page/summary/%s" % urllib.parse.quote(query.replace(" ", "_"))
+        w_data = js.loads(_http_get(w_url))
+        if w_data.get("extract"):
+            results.append("- Wikipedia: %s" % w_data["extract"][:400])
+    except Exception:
+        pass
+
+    # 3. DDG Instant Answer
+    try:
+        ddg_url = "https://api.duckduckgo.com/?q=%s&format=json&no_html=1" % urllib.parse.quote(query)
+        ddg_data = js.loads(_http_get(ddg_url))
+        if ddg_data.get("Abstract"):
+            results.append("- %s" % ddg_data["Abstract"][:400])
+        for t in ddg_data.get("RelatedTopics", [])[:3]:
+            if isinstance(t, dict) and t.get("Text"):
+                results.append("- %s" % t["Text"][:200])
+    except Exception:
+        pass
+
     if not results:
-        return "No results for '%s'." % query
-    return "Search results for '%s':\n" % query + "\n".join(results)
+        return "No results for '%s'. For full web search, add a Brave Search API key to ~/.chatbot/brave_key.txt (free at brave.com/search/api)." % query
+    return "Search results for '%s':\n" % query + "\n".join(results[:count])
 
 
 def _bridge_weather(location="Charlotte"):
