@@ -170,4 +170,168 @@ final class LlamaService {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
+    /// Chat with tool calling: non-streaming tool phase, then streaming final answer.
+    func streamWithTools(messages: [ChatMessage]) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let settings = UserDefaults.standard
+                let servers = Self.serverURLs()
+                guard !servers.isEmpty else {
+                    continuation.finish(throwing: URLError(.badURL))
+                    return
+                }
+
+                // Build base payload
+                var payload: [[String: String]] = []
+                let personaPrompt = PersonaStore.activePromptOnDisk()
+                var systemPrompt = personaPrompt
+                    ?? (settings.string(forKey: Defaults.systemKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let memoryContext = await MemoryService.shared.promptContext()
+                if !memoryContext.isEmpty { systemPrompt += memoryContext }
+                // Tool instruction
+                systemPrompt += "\n\nYou have tools available. When the user asks for current info, calculations, or actions, call the appropriate tool instead of guessing. Keep responses short."
+                if !systemPrompt.isEmpty {
+                    payload.append(["role": "system", "content": systemPrompt])
+                }
+                for message in messages {
+                    payload.append(["role": message.role.rawValue, "content": message.content])
+                }
+
+                let model = settings.string(forKey: Defaults.modelKey) ?? Defaults.model
+                let temp = (settings.object(forKey: Defaults.temperatureKey) as? Double) ?? Defaults.temperature
+
+                // Phase 1: non-streaming request with tools
+                var toolResults: [[String: Any]] = []
+                for base in servers {
+                    guard let url = URL(string: "v1/chat/completions", relativeTo: base) else { continue }
+                    do {
+                        var request = URLRequest(url: url.absoluteURL)
+                        request.httpMethod = "POST"
+                        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        let body: [String: Any] = [
+                            "model": model,
+                            "messages": payload,
+                            "stream": false,
+                            "temperature": temp,
+                            "tools": ToolService.openAITools(),
+                        ]
+                        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                        request.timeoutInterval = 60
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let choices = json["choices"] as? [[String: Any]],
+                              let msg = choices.first?["message"] as? [String: Any] else { continue }
+
+                        if let toolCalls = msg["tool_calls"] as? [[String: Any]], !toolCalls.isEmpty {
+                            // Append assistant's tool calls
+                            var assistantMsg: [String: Any] = ["role": "assistant"]
+                            // Keep content if any
+                            if let c = msg["content"] as? String { assistantMsg["content"] = c }
+                            assistantMsg["tool_calls"] = toolCalls
+                            toolResults.append(assistantMsg)
+
+                            // Execute each tool
+                            for tc in toolCalls {
+                                guard let fn = tc["function"] as? [String: Any],
+                                      let name = fn["name"] as? String else { continue }
+                                let argsStr = fn["arguments"] as? String ?? "{}"
+                                let args = (try? JSONSerialization.jsonObject(with: Data(argsStr.utf8)) as? [String: Any]) ?? [:]
+                                let result = await ToolService.shared.execute(name: name, arguments: args)
+                                toolResults.append([
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"] as? String ?? "",
+                                    "content": result,
+                                ])
+                            }
+                        }
+                        break  // Got a response, stop trying servers
+                    } catch { continue }
+                }
+
+                // Phase 2: streaming final answer with tool results
+                var finalPayload = payload
+                finalPayload.append(contentsOf: toolResults.map { dict -> [String: String] in
+                    // Convert to string-dict for payload (tool results are simple)
+                    var s: [String: String] = [:]
+                    for (k, v) in dict { s[k] = "\(v)" }
+                    return s
+                })
+
+                var lastError: Error = URLError(.cannotConnectToHost)
+                for base in servers {
+                    guard let url = URL(string: "v1/chat/completions", relativeTo: base) else { continue }
+                    do {
+                        var request = URLRequest(url: url.absoluteURL)
+                        request.httpMethod = "POST"
+                        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        // Build proper payload preserving tool_calls structure
+                        var msgs: [[String: Any]] = []
+                        for p in payload { msgs.append(p) }
+                        msgs.append(contentsOf: toolResults)
+                        let body: [String: Any] = [
+                            "model": model,
+                            "messages": msgs,
+                            "stream": true,
+                            "temperature": temp,
+                        ]
+                        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                        request.timeoutInterval = 15
+
+                        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                            throw URLError(.badServerResponse)
+                        }
+
+                        // Think-tag filter state
+                        var inThink = false
+                        var thinkBuffer = ""
+
+                        for try await line in bytes.lines {
+                            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard trimmed.hasPrefix("data: ") else { continue }
+                            let jsonStr = String(trimmed.dropFirst(6))
+                            if jsonStr == "[DONE]" { break }
+                            guard let data = jsonStr.data(using: .utf8),
+                                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                  let choices = json["choices"] as? [[String: Any]],
+                                  let delta = choices.first?["delta"] as? [String: Any],
+                                  let content = delta["content"] as? String,
+                                  !content.isEmpty else { continue }
+                            thinkBuffer += content
+                            var out = ""
+                            while !thinkBuffer.isEmpty {
+                                if inThink {
+                                    if let end = thinkBuffer.range(of: "</think>") {
+                                        thinkBuffer = String(thinkBuffer[end.upperBound...])
+                                        inThink = false
+                                    } else { thinkBuffer = "" }
+                                } else if let start = thinkBuffer.range(of: "<think>") {
+                                    out += thinkBuffer[..<start.lowerBound]
+                                    thinkBuffer = String(thinkBuffer[start.upperBound...])
+                                    inThink = true
+                                } else {
+                                    let hold = min(thinkBuffer.count, 7)
+                                    let splitAt = thinkBuffer.index(thinkBuffer.endIndex, offsetBy: -hold)
+                                    out += thinkBuffer[..<splitAt]
+                                    thinkBuffer = String(thinkBuffer[splitAt...])
+                                    break
+                                }
+                            }
+                            if !out.isEmpty { continuation.yield(out) }
+                        }
+                        if !inThink && !thinkBuffer.isEmpty { continuation.yield(thinkBuffer) }
+                        continuation.finish()
+                        return
+                    } catch {
+                        lastError = error
+                        continue
+                    }
+                }
+                continuation.finish(throwing: lastError)
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 }
