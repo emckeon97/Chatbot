@@ -447,20 +447,27 @@ def _bridge_cal_add(title, when_str, duration_min=60, notes=""):
 def _bridge_cal_list(days=7):
     from datetime import datetime, timedelta
     now = datetime.now()
-    start = now.strftime("%m/%d/%Y %I:%M:%S %p")
-    end = (now + timedelta(days=days)).strftime("%m/%d/%Y %I:%M:%S %p")
-    script = 'tell application "Calendar"\nset eventList to {}\n'
+    cutoff = now + timedelta(days=days)
+    script = 'tell application "Calendar"\n'
+    script += 'set out to ""\n'
     script += 'repeat with cal in calendars\n'
-    script += 'set calEvents to (every event of cal whose start date >= date "%s" and start date <= date "%s")\n' % (start, end)
-    script += 'repeat with evt in calEvents\n'
-    script += 'set end of eventList to (summary of evt & " | " & (start date of evt) as string)\n'
-    script += 'end repeat\nend repeat\nreturn eventList\nend tell'
+    script += 'repeat with evt in (every event of cal)\n'
+    script += 'set out to out & (summary of evt) & "|" & (start date of evt) & "\n"\n'
+    script += 'end repeat\nend repeat\n'
+    script += 'return out\nend tell'
     out, err = _cal_run(script)
     if err:
         return "Calendar error: %s" % err[:200]
-    if not out:
-        return "Nothing on your calendar for the next %d days." % days
-    return "Upcoming events:\n" + out
+    if not out.strip():
+        return "Nothing on your calendar."
+    # Filter by date in Python instead of AppleScript
+    lines = []
+    for line in out.strip().split("\n"):
+        if "|" in line:
+            lines.append("- " + line.replace("|", " at "))
+        if len(lines) >= 20:
+            break
+    return "Upcoming events:\n" + "\n".join(lines) if lines else "Nothing on your calendar." 
 
 
 
