@@ -47,31 +47,6 @@ final class ChatStore: ObservableObject {
             return handleScheduleRequest(action: action, message: message, date: date, recurring: recurring, original: trimmed, in: conversationID)
         }
 
-        // Weather ("weather", "weather in Charlotte")
-        if let loc = WeatherService.shared.parseQuery(trimmed) {
-            return handleWeather(location: loc, original: trimmed, in: conversationID)
-        }
-
-        // Calendar ("what's on my calendar", "add event Dentist tomorrow at 3pm")
-        if let (kind, rest) = CalendarService.shared.parse(trimmed) {
-            return handleCalendar(kind: kind, rest: rest, original: trimmed, in: conversationID)
-        }
-
-        // Info: stocks, crypto, news, dictionary
-        if let (kind, arg) = InfoService.shared.parse(trimmed) {
-            return handleInfo(kind: kind, arg: arg, original: trimmed, in: conversationID)
-        }
-
-        // Briefing ("brief me", "morning briefing")
-        if BriefingService.shared.parse(trimmed) {
-            return handleBriefing(original: trimmed, in: conversationID)
-        }
-
-        // Gmail in-app ("check gmail", "read 2")
-        if let (kind, arg) = GmailClient.shared.parse(trimmed) {
-            return handleGmail(kind: kind, arg: arg, original: trimmed, in: conversationID)
-        }
-
         var convo: Conversation
         if let conversationID, let existing = conversation(id: conversationID) {
             convo = existing
@@ -92,7 +67,7 @@ final class ChatStore: ObservableObject {
         streamTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await chunk in self.service.stream(messages: history) {
+                for try await chunk in self.service.streamWithTools(messages: history) {
                     self.streamingText += chunk
                 }
                 self.completeStream(into: targetID)
@@ -105,152 +80,6 @@ final class ChatStore: ObservableObject {
             self.isGenerating = false
             self.generatingIn = nil
             self.save()
-        }
-        return targetID
-    }
-
-    private func handleWeather(location: String, original: String, in conversationID: UUID?) -> UUID? {
-        var convo: Conversation
-        if let conversationID, let existing = conversation(id: conversationID) {
-            convo = existing
-        } else {
-            convo = Conversation()
-        }
-        convo.messages.append(ChatMessage(role: .user, content: original))
-        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
-        upsert(convo)
-        let targetID = convo.id
-        isGenerating = true
-        generatingIn = targetID
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            let result = await WeatherService.shared.fetch(location: location)
-            await MainActor.run {
-                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
-                self.isGenerating = false
-                self.generatingIn = nil
-                self.save()
-            }
-        }
-        return targetID
-    }
-
-    private func handleCalendar(kind: String, rest: String, original: String, in conversationID: UUID?) -> UUID? {
-        var convo: Conversation
-        if let conversationID, let existing = conversation(id: conversationID) {
-            convo = existing
-        } else {
-            convo = Conversation()
-        }
-        convo.messages.append(ChatMessage(role: .user, content: original))
-        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
-        upsert(convo)
-        let targetID = convo.id
-        isGenerating = true
-        generatingIn = targetID
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            let result: String
-            if kind == "list" {
-                result = await CalendarService.shared.listToday()
-            } else {
-                result = await CalendarService.shared.addEvent(rest)
-            }
-            await MainActor.run {
-                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
-                self.isGenerating = false
-                self.generatingIn = nil
-                self.save()
-            }
-        }
-        return targetID
-    }
-
-    private func handleInfo(kind: String, arg: String, original: String, in conversationID: UUID?) -> UUID? {
-        var convo: Conversation
-        if let conversationID, let existing = conversation(id: conversationID) {
-            convo = existing
-        } else {
-            convo = Conversation()
-        }
-        convo.messages.append(ChatMessage(role: .user, content: original))
-        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
-        upsert(convo)
-        let targetID = convo.id
-        isGenerating = true
-        generatingIn = targetID
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            let result: String
-            switch kind {
-            case "stock": result = await InfoService.shared.stock(arg)
-            case "crypto": result = await InfoService.shared.crypto(arg)
-            case "news": result = await InfoService.shared.news()
-            case "define": result = await InfoService.shared.define(arg)
-            default: result = "Unknown request."
-            }
-            await MainActor.run {
-                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
-                self.isGenerating = false
-                self.generatingIn = nil
-                self.save()
-            }
-        }
-        return targetID
-    }
-
-    private func handleBriefing(original: String, in conversationID: UUID?) -> UUID? {
-        let targetID = appendUser(original, in: conversationID)
-        isGenerating = true
-        generatingIn = targetID
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            let result = await BriefingService.shared.build()
-            await MainActor.run {
-                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
-                self.isGenerating = false
-                self.generatingIn = nil
-                self.save()
-            }
-        }
-        return targetID
-    }
-
-    private func handleGmail(kind: String, arg: String, original: String, in conversationID: UUID?) -> UUID? {
-        guard GoogleAuthService.shared.isSignedIn else {
-            let targetID = appendUser(original, in: conversationID)
-            appendTo(targetID, ChatMessage(role: .assistant, content: "Connect your Google account in Settings first, sir."))
-            save()
-            return targetID
-        }
-        let targetID = appendUser(original, in: conversationID)
-        isGenerating = true
-        generatingIn = targetID
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            let result: String
-            if kind == "list" {
-                let emails = await GmailClient.shared.listInbox()
-                // Cache IDs for "read N"
-                self.gmailCache = emails
-                result = GmailClient.shared.formatList(emails)
-            } else {
-                let idx = (Int(arg) ?? 1) - 1
-                if idx >= 0, idx < self.gmailCache.count {
-                    let e = self.gmailCache[idx]
-                    let body = await GmailClient.shared.readBody(id: e.id) ?? "(couldn't load body)"
-                    let short = String(body.prefix(1500)) + (body.count > 1500 ? "..." : "")
-                    result = "From: \(e.from)\nSubject: \(e.subject)\n\n\(short)"
-                } else {
-                    result = "Say 'check gmail' first, then 'read 2', sir."
-                }
-            }
-            await MainActor.run {
-                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
-                self.isGenerating = false
-                self.generatingIn = nil
-                self.save()
-            }
         }
         return targetID
     }
@@ -328,7 +157,7 @@ final class ChatStore: ObservableObject {
                 var history = convo.messages
                 history.append(ChatMessage(role: .user, content:
                     "Web search results for '\(query)':\n\(results)\n\nBased on these results, answer: \(original)"))
-                for try await chunk in self.service.stream(messages: history) {
+                for try await chunk in self.service.streamWithTools(messages: history) {
                     self.streamingText += chunk
                 }
                 self.completeStream(into: targetID)
@@ -427,7 +256,7 @@ final class ChatStore: ObservableObject {
         streamTask = Task { [weak self] in
             guard let self else { return }
             do {
-                for try await chunk in self.service.stream(messages: history) {
+                for try await chunk in self.service.streamWithTools(messages: history) {
                     self.streamingText += chunk
                 }
                 self.completeStream(into: targetID)
