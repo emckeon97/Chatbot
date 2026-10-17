@@ -5,6 +5,8 @@ struct SettingsView: View {
     @ObservedObject private var googleAuth = GoogleAuthService.shared
     @AppStorage("callVoiceIdentifier") private var callVoiceIdentifier = ""
     @State private var availableVoices: [AVSpeechSynthesisVoice] = []
+    @State private var githubToken = ""
+    @State private var githubConnected = GitHubService.shared.hasToken
     @AppStorage("serverURL") private var serverURL = "http://192.168.0.102:11434"
     @AppStorage("tailscaleServer") private var tailscaleURL = ""
     @AppStorage("modelName") private var modelName = "dolphin-llama3:8b"
@@ -89,6 +91,13 @@ struct SettingsView: View {
                 Text("Google")
             } footer: {
                 Text("Connect your Google account for Gmail access.")
+            }
+            Section {
+                GitHubRow(token: $githubToken, connected: $githubConnected)
+            } header: {
+                Text("GitHub")
+            } footer: {
+                Text("Create a token at github.com/settings/tokens with 'repo' scope.")
             }
             Section {
                 VoicePickerRow(voices: availableVoices, selection: $callVoiceIdentifier)
@@ -176,6 +185,40 @@ private struct VoicePickerRow: View {
                 }
             }
             .pickerStyle(.menu)
+        }
+    }
+}
+
+private struct GitHubRow: View {
+    @Binding var token: String
+    @Binding var connected: Bool
+
+    var body: some View {
+        if connected {
+            HStack {
+                Text("Connected")
+                Spacer()
+                Button("Disconnect") {
+                    GitHubService.shared.clearToken()
+                    connected = false
+                    token = ""
+                }
+                .foregroundStyle(.red)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                SecureField("Personal access token", text: $token)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Connect GitHub") {
+                    let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !t.isEmpty else { return }
+                    GitHubService.shared.saveToken(t)
+                    connected = true
+                    token = ""
+                }
+                .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
     }
 }
