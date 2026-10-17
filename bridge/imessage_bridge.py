@@ -429,6 +429,19 @@ def execute_tool(name, args):
         details = args.get("details", "")
         if not task:
             return "No task described."
+        # Guardrail: refuse to delegate things the bridge can do itself
+        tl = (task + " " + details).lower()
+        own = [
+            (["email", "inbox", "gmail", "outlook", "icloud", "mail"], "check_email / read_email / send_email"),
+            (["github", "repo", "commit", "push", "pull request"], "github_list_repos / github_list_files / github_read_file / github_write_file"),
+            (["remind", "schedule", "alarm", "timer", "wake me"], "schedule_text / list_scheduled"),
+            (["remember", "forget", "recall", "memory"], "remember_fact / recall_facts / forget_fact"),
+            (["calculate", "math", "+", "-", "*", "/", "percent"], "run_python"),
+        ]
+        for keywords, tools in own:
+            if any(k in tl for k in keywords):
+                return ("REFUSED \u2014 you have tools for this yourself (%s). "
+                        "Use them instead of delegating. Do not call delegate_task again for this.") % tools
         tasks = load_delegated_tasks()
         task_id = "task_%d" % int(time.time())
         tasks.append({"id": task_id, "task": task, "details": details,
