@@ -49,7 +49,7 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ---------- settings ----------
 USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are answered
@@ -200,7 +200,10 @@ Tools:
 - delegate_task | {"task": "cancel my Spotify subscription", "details": "any extra context"} \u2014 LAST RESORT ONLY. Hand a task to Jarvis (the main AI) when it needs a web browser or accounts you can\u2019t reach (booking sites, canceling subscriptions, etc). NEVER use this for email, GitHub, or anything your other tools can do. Tell the user you\u2019ve handed it off and he\u2019ll confirm when done.
 - check_email | {"provider": "gmail/outlook/icloud/all", "count": 5} — List recent inbox emails.
 - read_email | {"provider": "gmail/outlook/icloud", "id": "message id"} — Read a specific email.
-- send_email | {"provider": "gmail/outlook/icloud", "to": "addr", "subject": "...", "body": "..."} — Send an email. ALWAYS propose_plan first and wait for confirmation."""
+- send_email | {"provider": "gmail/outlook/icloud", "to": "addr", "subject": "...", "body": "..."} — Send an email. ALWAYS propose_plan first and wait for confirmation.
+- schedule_text | {"message": "...", "when": "in 30 minutes / tomorrow at 9am", "recurring": "none/daily/weekly"} \u2014 Schedule a text to him. Describe when naturally.
+- list_scheduled | {} \u2014 Show all scheduled texts.
+- cancel_scheduled | {"index": 0} \u2014 Cancel a scheduled text by its number."""
 
 
 def _email_svc(provider):
@@ -257,6 +260,78 @@ def _bridge_send_email(provider, to, subject, body):
         return "Error: %s" % ex
 
 
+def _parse_when(when_str):
+    """Parse natural time like 'in 30 minutes', 'tomorrow at 9am' into a timestamp."""
+    import re as _re
+    s = when_str.lower().strip()
+    now = time.time()
+    m = _re.match(r"in\s+(\d+)\s*(minute|min|hour|hr)", s)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        return now + (n * 3600 if unit.startswith("hour") or unit == "hr" else n * 60)
+    m = _re.search(r"(tomorrow\s+)?at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", s)
+    if m:
+        hour = int(m.group(2))
+        minute = int(m.group(3) or 0)
+        ampm = m.group(4)
+        if ampm == "pm" and hour < 12:
+            hour += 12
+        if ampm == "am" and hour == 12:
+            hour = 0
+        dt = datetime.now()
+        if m.group(1):
+            dt = dt + timedelta(days=1)
+        dt = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        ts = dt.timestamp()
+        if ts < now:
+            ts += 86400
+        return ts
+    return None
+
+
+def _bridge_schedule(message, when_str, recurring="none"):
+    if not message:
+        return "No message given."
+    at = _parse_when(when_str)
+    if not at:
+        return "Couldn't understand '%s'. Try 'in 30 minutes' or 'tomorrow at 9am'." % when_str
+    rec = recurring.lower() if recurring.lower() in ("daily", "weekly") else None
+    if "every day" in when_str.lower():
+        rec = "daily"
+    elif "every week" in when_str.lower():
+        rec = "weekly"
+    items = load_schedule()
+    items.append({"message": message, "at": at, "recurring": rec, "created": time.time()})
+    save_schedule(items)
+    dt = datetime.fromtimestamp(at)
+    rec_str = " (repeating %s)" % rec if rec else ""
+    return "Scheduled for %s%s, sir." % (dt.strftime("%a %b %d at %I:%M %p"), rec_str)
+
+
+def _bridge_list_scheduled():
+    items = load_schedule()
+    if not items:
+        return "Nothing scheduled."
+    lines = []
+    for i, item in enumerate(items):
+        dt = datetime.fromtimestamp(item.get("at", 0))
+        rec = item.get("recurring")
+        lines.append("%d. %s \u2014 %s%s" % (i, dt.strftime("%a %b %d %I:%M %p"),
+                                               item.get("message", "")[:60],
+                                               " (repeats %s)" % rec if rec else ""))
+    return "\n".join(lines)
+
+
+def _bridge_cancel_scheduled(index):
+    items = load_schedule()
+    if 0 <= index < len(items):
+        msg = items.pop(index).get("message", "")[:40]
+        save_schedule(items)
+        return "Cancelled: %s" % msg
+    return "No scheduled task at number %d." % index
+
+
 def execute_tool(name, args):
     if name == "propose_plan":
         return "PLAN PROPOSED \u2014 present this to the user and WAIT for explicit confirmation before doing anything:\n\n**%s**\n%s\n\nDo not proceed until he says yes." % (args.get("title", "Plan"), args.get("steps", ""))
@@ -292,6 +367,12 @@ def execute_tool(name, args):
     if name == "send_email":
         return _bridge_send_email(args.get("provider", "gmail").lower(), args.get("to", ""),
                                    args.get("subject", ""), args.get("body", ""))
+    if name == "schedule_text":
+        return _bridge_schedule(args.get("message", ""), args.get("when", ""), args.get("recurring", "none"))
+    if name == "list_scheduled":
+        return _bridge_list_scheduled()
+    if name == "cancel_scheduled":
+        return _bridge_cancel_scheduled(int(args.get("index", -1)))
     if not GITHUB_AVAILABLE:
         return "GitHub not available on bridge."
     if name == "github_list_repos":
