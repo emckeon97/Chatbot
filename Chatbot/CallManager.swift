@@ -9,6 +9,12 @@ final class CallManager: ObservableObject {
     @Published private(set) var isSpeaking = false
     @Published private(set) var transcript = ""
     @Published private(set) var status = "Connecting..."
+    @Published private(set) var isMuted = false
+    @Published private(set) var speakerOn = true
+    @Published private(set) var callTimeFormatted = "00:00"
+
+    private var callStart: Date?
+    private var timerTask: Task<Void, Never>?
 
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -54,6 +60,8 @@ final class CallManager: ObservableObject {
 
     private func beginConversation() {
         callActive = true
+        callStart = Date()
+        startTimer()
         status = "Listening..."
         // Greet the user
         speak("Hey, I'm listening. What do you want to talk about?")
@@ -61,6 +69,8 @@ final class CallManager: ObservableObject {
 
     func endCall() {
         callActive = false
+        timerTask?.cancel()
+        timerTask = nil
         stopListening()
         synthesizer.stopSpeaking(at: .immediate)
         conversation = []
@@ -302,8 +312,56 @@ final class CallManager: ObservableObject {
         synthesizer.speak(utterance)
     }
 
+    private func startTimer() {
+        timerTask?.cancel()
+        timerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, let start = self.callStart else { break }
+                let elapsed = Int(Date().timeIntervalSince(start))
+                let m = elapsed / 60, s = elapsed % 60
+                await MainActor.run {
+                    self.callTimeFormatted = String(format: "%02d:%02d", m, s)
+                }
+            }
+        }
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        // Re-install tap only when unmuted and listening
+        if !isMuted, isListening {
+            guard let request = recognitionRequest else { return }
+            let inputNode = audioEngine.inputNode
+            let format = inputNode.outputFormat(forBus: 0)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                request.append(buffer)
+            }
+        }
+    }
+
+    func toggleSpeaker() {
+        speakerOn.toggle()
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.overrideOutputAudioPort(speakerOn ? .speaker : .none)
+        } catch {
+            status = "Speaker toggle failed."
+        }
+    }
+
+    /// Pick the voice: user-selected identifier first, else best available English.
+    private func selectedVoiceIdentifier() -> String? {
+        UserDefaults.standard.string(forKey: "callVoiceIdentifier")
+    }
+
     /// Pick the best available English voice (prefers premium/enhanced).
     private func bestVoice() -> AVSpeechSynthesisVoice? {
+        if let id = selectedVoiceIdentifier(),
+           let v = AVSpeechSynthesisVoice(identifier: id) {
+            return v
+        }
         let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
         // Prefer premium quality, then enhanced, then default
         if let premium = voices.first(where: { $0.quality == .premium }) {
