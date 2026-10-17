@@ -10,7 +10,18 @@ import os
 import urllib.parse
 import urllib.request
 
-TOKEN_PATH = os.path.expanduser("~/.chatbot/gmail_token.json")
+def _token_path():
+    """Check ai user dir first, then current user dir."""
+    candidates = [
+        "/Users/AI/.chatbot/gmail_token.json",
+        os.path.expanduser("~/.chatbot/gmail_token.json"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+TOKEN_PATH = _token_path()
 CLIENT_ID = "294125895152-j6iicnapr17dip79nogi23amqb1i8d6d.apps.googleusercontent.com"
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
           "https://www.googleapis.com/auth/gmail.send"]
