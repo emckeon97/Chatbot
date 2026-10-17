@@ -46,6 +46,10 @@
 	<string>Chatbot needs microphone access for voice calls.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Chatbot needs speech recognition for voice calls.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>This app needs calendar access to manage your events.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo access to share images in chat.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -57,8 +61,10 @@
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
