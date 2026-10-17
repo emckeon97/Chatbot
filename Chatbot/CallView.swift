@@ -48,7 +48,7 @@ struct CallView: View {
                 Spacer()
 
                 // Call controls grid
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 24) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 24) {
                     CallButton(icon: callManager.isMuted ? "mic.slash.fill" : "mic.fill",
                                label: callManager.isMuted ? "unmute" : "mute",
                                isActive: callManager.isMuted) {
@@ -57,9 +57,6 @@ struct CallView: View {
                     CallButton(icon: "speaker.wave.2.fill", label: "speaker",
                                isActive: callManager.speakerOn) {
                         callManager.toggleSpeaker()
-                    }
-                    CallButton(icon: "keyboard.fill", label: "keypad") {
-                        // keypad placeholder
                     }
                 }
                 .padding(.horizontal, 48)
