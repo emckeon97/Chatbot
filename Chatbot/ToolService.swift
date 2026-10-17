@@ -141,7 +141,7 @@ final class ToolService {
                 return "Gmail not connected. Connect in Settings first."
             }
             let emails = await GmailClient.shared.listInbox()
-            return GmailClient.shared.formatList(emails)
+            return await GmailClient.shared.formatList(emails)
         case "get_briefing":
             return await BriefingService.shared.build()
         case "github_list_repos":
