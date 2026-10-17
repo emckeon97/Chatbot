@@ -64,6 +64,7 @@ POLL_SECONDS = 3
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
 MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
 SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.json")
+TASK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "delegated_tasks.json")
 SCHEDULER_PORT = 11435
 
 # ---------- message reading (database) ----------
@@ -193,7 +194,8 @@ Tools:
 - github_read_file | {"repo": "owner/name", "path": "file/path"} — Read a file.
 - github_write_file | {"repo": "owner/name", "path": "file/path", "content": "...", "message": "commit msg"} — Create/update a file.
 - github_commits | {"repo": "owner/name"} — Recent commits.
-- run_python | {"code": "print(2+2)"} — Run Python code, returns output."""
+- run_python | {"code": "print(2+2)"} — Run Python code, returns output.
+- delegate_task | {"task": "cancel my Spotify subscription", "details": "any extra context"} — Hand a real-world task to Jarvis (the main AI). Use for: booking reservations, canceling subscriptions, making calls, anything needing a browser or accounts you can't reach. Tell the user you've handed it off and he'll confirm when done."""
 
 
 def execute_tool(name, args):
@@ -211,6 +213,17 @@ def execute_tool(name, args):
             return out if out else "Done (no output)."
         except Exception as e:
             return "Error: %s" % e
+    if name == "delegate_task":
+        task = args.get("task", "")
+        details = args.get("details", "")
+        if not task:
+            return "No task described."
+        tasks = load_delegated_tasks()
+        task_id = "task_%d" % int(time.time())
+        tasks.append({"id": task_id, "task": task, "details": details,
+                       "status": "pending", "created": time.time(), "result": None})
+        save_delegated_tasks(tasks)
+        return "DELEGATED \u2014 task queued (ID %s). Tell the user: 'On it \u2014 I've handed this to Jarvis, he'll confirm when it's done.' Do NOT attempt this yourself." % task_id
     if not GITHUB_AVAILABLE:
         return "GitHub not available on bridge."
     if name == "github_list_repos":
@@ -306,6 +319,27 @@ def save_history(history: list) -> None:
             json.dump(history, file, ensure_ascii=False, indent=1)
     except Exception as error:
         print("could not save memory:", error)
+
+
+# ---------- delegated tasks (picked up by main Jarvis via Tailscale) ----------
+
+def load_delegated_tasks():
+    if not os.path.exists(TASK_FILE):
+        return []
+    try:
+        with open(TASK_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_delegated_tasks(tasks):
+    try:
+        with open(TASK_FILE, "w", encoding="utf-8") as f:
+            json.dump(tasks, f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        print("could not save tasks:", e)
 
 
 # ---------- scheduled texts ----------
@@ -404,6 +438,49 @@ class ScheduleHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(items).encode())
+        elif self.path == "/task_result":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+                task_id = data.get("id", "")
+                result = data.get("result", "")
+                tasks = load_delegated_tasks()
+                for t in tasks:
+                    if t["id"] == task_id:
+                        t["status"] = "done"
+                        t["result"] = result
+                        # Queue a text to the user with the result
+                        items = load_schedule()
+                        items.append({"message": "Task done: %s" % result, "at": time.time() + 5,
+                                       "recurring": None, "created": time.time()})
+                        save_schedule(items)
+                        break
+                save_delegated_tasks(tasks)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True}).encode())
+            except Exception as e:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_GET(self):
+        if self.path == "/pending_tasks":
+            tasks = [t for t in load_delegated_tasks() if t["status"] == "pending"]
+            # Mark as claimed so we don't double-process
+            all_tasks = load_delegated_tasks()
+            for t in all_tasks:
+                if t["status"] == "pending":
+                    t["status"] = "claimed"
+            save_delegated_tasks(all_tasks)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(tasks).encode())
         else:
             self.send_response(404)
             self.end_headers()
