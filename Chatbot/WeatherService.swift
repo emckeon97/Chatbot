@@ -32,7 +32,7 @@ final class WeatherService: NSObject, ObservableObject {
                 guard let item = items.first else {
                     return "Couldn't find that place."
                 }
-                let coord = item.placemark.coordinate
+                let coord = item.location.coordinate
                 let placeName = item.name ?? location
                 return await fetchCoords(lat: coord.latitude, lon: coord.longitude, name: placeName)
             }
