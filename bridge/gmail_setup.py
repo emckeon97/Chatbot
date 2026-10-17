@@ -4,8 +4,11 @@ One-time Gmail setup for the iMessage bridge.
 Run: python3 gmail_setup.py
 Opens your browser for Google sign-in, saves a refresh token to ~/.chatbot/gmail_token.json
 """
+import base64
+import hashlib
 import json
 import os
+import secrets
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -39,6 +42,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    # PKCE for desktop apps (no client_secret needed)
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     params = urllib.parse.urlencode({
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT,
@@ -46,6 +52,8 @@ def main():
         "scope": " ".join(SCOPES),
         "access_type": "offline",
         "prompt": "consent",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
     })
     url = f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
     print("Opening browser for Google sign-in...")
@@ -63,6 +71,7 @@ def main():
         "code": code_holder["code"],
         "redirect_uri": REDIRECT,
         "grant_type": "authorization_code",
+        "code_verifier": verifier,
     }).encode()
     req = urllib.request.Request("https://oauth2.googleapis.com/token", data=body)
     try:
