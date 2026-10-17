@@ -1,10 +1,9 @@
 import Foundation
-import CoreLocation
+import MapKit
 
 /// Free weather via Open-Meteo (no API key). Usage: "weather" or "weather in Charlotte".
 final class WeatherService: NSObject, ObservableObject {
     static let shared = WeatherService()
-    private let geocoder = CLGeocoder()
 
     /// Parse "weather"-type requests. Returns a location string, or "" for current location.
     func parseQuery(_ text: String) -> String? {
@@ -22,19 +21,17 @@ final class WeatherService: NSObject, ObservableObject {
 
     func fetch(location: String) async -> String {
         do {
-            let coords: (Double, Double)
-            let placeName: String
             if location.isEmpty {
-                // Use IP-based approx via Open-Meteo geocoding of nothing — fall back to Charlotte
+                // Fall back to Charlotte
                 return await fetchCoords(lat: 35.2271, lon: -80.8431, name: "Charlotte")
             } else {
-                let placemarks = try await geocoder.geocodeAddressString(location)
-                guard let p = placemarks.first, let loc = p.location else {
+                let request = MKGeocodingRequest(addressString: location)
+                let items = try await request.start()
+                guard let item = items.first, let loc = item.location else {
                     return "Couldn't find that place."
                 }
-                coords = (loc.coordinate.latitude, loc.coordinate.longitude)
-                placeName = p.locality ?? p.name ?? location
-                return await fetchCoords(lat: coords.0, lon: coords.1, name: placeName)
+                let placeName = item.name ?? location
+                return await fetchCoords(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude, name: placeName)
             }
         } catch {
             return "Weather lookup failed."
@@ -62,7 +59,7 @@ final class WeatherService: NSObject, ObservableObject {
         case 95...99: desc = "Thunderstorms"
         default: break
         }
-        var hi = "", lo = ""
+        var hi = ""
         if let daily = json["daily"] as? [String: Any],
            let maxs = daily["temperature_2m_max"] as? [Double], let first = maxs.first,
            let mins = daily["temperature_2m_min"] as? [Double], let firstMin = mins.first {
