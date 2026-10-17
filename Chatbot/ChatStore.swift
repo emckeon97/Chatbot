@@ -19,7 +19,17 @@ final class ChatStore: ObservableObject {
         .appendingPathComponent("conversations.json")
 
     init() {
-        load()
+        // Load async so launch isn't blocked on disk I/O
+        Task { [weak self] in
+            let loaded = await Self.loadFromDisk()
+            await MainActor.run { self?.conversations = loaded }
+        }
+    }
+
+    private static func loadFromDisk() async -> [Conversation] {
+        guard let data = try? Data(contentsOf: Self.archive),
+              let decoded = try? JSONDecoder().decode([Conversation].self, from: data) else { return [] }
+        return decoded
     }
 
     func conversation(id: UUID?) -> Conversation? {
@@ -97,8 +107,6 @@ final class ChatStore: ObservableObject {
         upsert(convo)
         return convo.id
     }
-
-    private var gmailCache: [GmailClient.Email] = []
 
     private func handleMemoryAction(_ action: MemoryService.MemoryAction, original: String, in conversationID: UUID?) -> UUID? {
         var convo: Conversation
@@ -369,11 +377,7 @@ final class ChatStore: ObservableObject {
         }
     }
 
-    private func load() {
-        guard let data = try? Data(contentsOf: Self.archive),
-              let decoded = try? JSONDecoder().decode([Conversation].self, from: data) else { return }
-        conversations = decoded
-    }
+
 
     private func save() {
         guard let data = try? JSONEncoder().encode(conversations) else { return }
