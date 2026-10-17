@@ -5,6 +5,8 @@ struct SettingsView: View {
     @ObservedObject private var googleAuth = GoogleAuthService.shared
     @AppStorage("callVoiceIdentifier") private var callVoiceIdentifier = ""
     @State private var availableVoices: [AVSpeechSynthesisVoice] = []
+    @State private var serverStatus: [String: Bool] = [:]
+    @State private var testingConnection = false
     @State private var githubToken = ""
     @State private var githubConnected = GitHubService.shared.hasToken
     @AppStorage("serverURL") private var serverURL = "http://192.168.0.102:11434"
@@ -19,19 +21,17 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                TextField("http://192.168.0.102:11434", text: $serverURL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onChange(of: serverURL) { Task { await loadModels() } }
-                TextField("Tailscale IP (e.g. http://100.x.x.x:11434)", text: $tailscaleURL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                ServerRow(label: "Primary", url: $serverURL, placeholder: "http://192.168.0.102:11434",
+                          status: serverStatus[serverURL], onTest: testConnections)
+                ServerRow(label: "Tailscale", url: $tailscaleURL, placeholder: "http://100.x.x.x:11434",
+                          status: tailscaleURL.isEmpty ? nil : serverStatus[tailscaleURL], onTest: testConnections)
+                if testingConnection {
+                    HStack { Spacer(); ProgressView().scaleEffect(0.8); Spacer() }
+                }
             } header: {
                 Text("Server")
             } footer: {
-                Text("Tailscale IP is used as a fallback when you're away from home Wi-Fi. Ollama listens on port 11434.")
+                Text("Tailscale IP is used as a fallback when you're away from home Wi-Fi. Ollama listens on port 11434. Green means reachable.")
             }
             Section("Model") {
                 if availableModels.isEmpty {
@@ -119,6 +119,35 @@ struct SettingsView: View {
             availableVoices = AVSpeechSynthesisVoice.speechVoices()
                 .filter { $0.language.hasPrefix("en") }
                 .sorted { $0.name < $1.name }
+        }
+    }
+
+    private func testConnections() {
+        testingConnection = true
+        Task {
+            var results: [String: Bool] = [:]
+            for raw in [serverURL, tailscaleURL] {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                var s = trimmed
+                if !s.hasPrefix("http") { s = "http://" + s }
+                guard let url = URL(string: s + "/api/tags") else {
+                    results[raw] = false
+                    continue
+                }
+                do {
+                    var req = URLRequest(url: url)
+                    req.timeoutInterval = 5
+                    let (_, resp) = try await URLSession.shared.data(for: req)
+                    results[raw] = (resp as? HTTPURLResponse)?.statusCode == 200
+                } catch {
+                    results[raw] = false
+                }
+            }
+            await MainActor.run {
+                serverStatus = results
+                testingConnection = false
+            }
         }
     }
 
@@ -220,5 +249,35 @@ private struct GitHubRow: View {
                 .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+    }
+}
+
+private struct ServerRow: View {
+    let label: String
+    @Binding var url: String
+    let placeholder: String
+    let status: Bool?
+    let onTest: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Circle()
+                    .fill(status == nil ? Color.gray : (status! ? Color.green : Color.red))
+                    .frame(width: 8, height: 8)
+                Text(label)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                TextField(placeholder, text: $url)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Test", action: onTest)
+                    .font(.footnote)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
