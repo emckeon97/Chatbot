@@ -13,6 +13,18 @@ import smtplib
 from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 
+def _find_token(filename):
+    """Check ai user dir first, then current user dir."""
+    candidates = [
+        "/Users/AI/.chatbot/" + filename,
+        os.path.expanduser("~/.chatbot/" + filename),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+
 CREDS_PATH = os.path.expanduser("~/.chatbot/icloud.json")
 IMAP_HOST, IMAP_PORT = "imap.mail.me.com", 993
 SMTP_HOST, SMTP_PORT = "smtp.mail.me.com", 587
