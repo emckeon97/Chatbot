@@ -96,6 +96,17 @@ def _decode_body(payload):
 
 
 def list_inbox(max_results=5):
+    _imap_result = _imap_list(max_results)
+    if _imap_result is not None:
+        return _imap_result
+    # Try app-password IMAP first (simpler, no OAuth)
+    try:
+        result = _imap_list(max_results)
+        if result is not None:
+            return result
+    except Exception:
+        pass
+    # Fall back to OAuth
     """Returns [(id, from, subject, date, snippet)]."""
     data = _api(f"messages?maxResults={max_results}&q=in:inbox")
     out = []
@@ -108,6 +119,9 @@ def list_inbox(max_results=5):
 
 
 def read_email(msg_id):
+    _imap_result = _imap_read(msg_id)
+    if _imap_result is not None:
+        return _imap_result
     """Returns (from, subject, date, body)."""
     msg = _api(f"messages/{msg_id}?format=full")
     h = _headers(msg.get("payload", {}))
@@ -116,7 +130,93 @@ def read_email(msg_id):
 
 
 def send_email(to, subject, body):
+    _imap_result = _imap_send(to, subject, body)
+    if _imap_result is not None:
+        return _imap_result
     raw = f"To: {to}\r\nSubject: {subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body}"
     b64 = base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
     _api("messages/send", method="POST", body={"raw": b64})
+    return True
+
+
+# ---------- IMAP fallback (app password) ----------
+
+def _app_creds():
+    """Check for app-password creds at ~/.chatbot/gmail_imap.json or /Users/AI/.chatbot/."""
+    for p in ["/Users/AI/.chatbot/gmail_imap.json", os.path.expanduser("~/.chatbot/gmail_imap.json")]:
+        if os.path.exists(p):
+            with open(p) as f:
+                return json.load(f)
+    return None
+
+
+def _imap_list(count=5):
+    import imaplib, email as email_lib
+    creds = _app_creds()
+    if not creds:
+        return None
+    conn = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+    try:
+        conn.login(creds["email"], creds["password"])
+        conn.select("INBOX")
+        _, data = conn.search(None, "ALL")
+        uids = data[0].split()[-count:]
+        out = []
+        for uid in reversed(uids):
+            _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+            raw = b"".join(p[1] for p in msg_data if isinstance(p, tuple))
+            msg = email_lib.message_from_bytes(raw)
+            out.append({
+                "id": uid.decode(),
+                "from": str(msg.get("From", "?")),
+                "subject": str(msg.get("Subject", "(no subject)")),
+            })
+        return out
+    finally:
+        try: conn.logout()
+        except: pass
+
+
+def _imap_read(uid):
+    import imaplib, email as email_lib
+    creds = _app_creds()
+    if not creds:
+        return None
+    conn = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+    try:
+        conn.login(creds["email"], creds["password"])
+        conn.select("INBOX")
+        _, msg_data = conn.fetch(uid.encode(), "(RFC822)")
+        raw = b"".join(p[1] for p in msg_data if isinstance(p, tuple))
+        msg = email_lib.message_from_bytes(raw)
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain" and not part.get_filename():
+                    body = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                    break
+        else:
+            payload = msg.get_payload(decode=True)
+            body = payload.decode("utf-8", errors="replace") if payload else ""
+        return "From: %s\nSubject: %s\nDate: %s\n\n%s" % (
+            msg.get("From", "?"), msg.get("Subject", "(no subject)"), msg.get("Date", ""), body[:3000])
+    finally:
+        try: conn.logout()
+        except: pass
+
+
+def _imap_send(to, subject, body):
+    import smtplib
+    from email.mime.text import MIMEText
+    creds = _app_creds()
+    if not creds:
+        return None
+    msg = MIMEText(body)
+    msg["From"] = creds["email"]
+    msg["To"] = to
+    msg["Subject"] = subject
+    with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        s.starttls()
+        s.login(creds["email"], creds["password"])
+        s.send_message(msg)
     return True
