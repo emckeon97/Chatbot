@@ -843,6 +843,14 @@ def ask_with_tools(history):
         return ask(history)
 
     # Parse tool calls — flexible for model format variations
+    # Log tool calls for debugging hallucinations
+    import datetime as _dt
+    def _log_tool(name, args, result):
+        try:
+            with open("/Users/AI/.chatbot/tool_log.txt", "a") as f:
+                f.write("%s | %s | %s | %s\n" % (_dt.datetime.now().isoformat(), name, str(args)[:200], str(result)[:200]))
+        except:
+            pass
     calls = []
     for m in re.finditer(r"\[TOOL:\s*(\w+)\s*\|\s*(\{.*?\})\s*\]", raw, re.DOTALL):
         calls.append((m.group(1), m.group(2)))
@@ -870,7 +878,7 @@ def ask_with_tools(history):
 
     # Phase 2: final answer with tool results
     messages.append({"role": "assistant", "content": raw})
-    messages.append({"role": "user", "content": "Tool results:\n\n" + "\n\n".join(results_text) + "\n\nNow answer the original request using these results. Keep it SHORT (1-3 sentences) unless he asked for detail."})
+    messages.append({"role": "user", "content": "Tool results:\n\n" + "\n\n".join(results_text) + "\n\nNow answer the original request using these results. Keep it SHORT (1-3 sentences) unless he asked for detail.\nCRITICAL: NEVER claim you completed an action (added event, sent email, etc.) unless the tool result above confirms it. If you did not call a tool, say so honestly. Making up confirmations is the worst thing you can do."})
     body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "options": {"num_predict": 200}}).encode()
     request = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=600) as response:
