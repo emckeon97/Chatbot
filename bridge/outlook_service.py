@@ -13,7 +13,7 @@ import urllib.request
 TOKEN_PATH = os.path.expanduser("~/.chatbot/outlook_token.json")
 # Same app registration used by Muse's Outlook connector
 CLIENT_ID = "9ae67231-da3a-476b-a3f4-1f89ccb7eb5b"
-SCOPES = ["Mail.Read", "Mail.Send", "offline_access"]
+SCOPES = ["Mail.Read", "Mail.Send"]
 AUTHORITY = "https://login.microsoftonline.com/common"
 
 
