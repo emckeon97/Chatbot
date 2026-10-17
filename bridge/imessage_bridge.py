@@ -404,6 +404,15 @@ def _bridge_cancel_scheduled(index):
 
 def _cal_run(script):
     import subprocess as sp
+    # Run as main user (emckeon97) so events land in his Calendar, not the ai user's
+    try:
+        result = sp.run(["sudo", "-u", "emckeon97", "osascript", "-e", script],
+                        capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return result.stdout.strip(), result.stderr.strip()
+    except Exception:
+        pass
+    # Fallback: run as current user
     result = sp.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
     return result.stdout.strip(), result.stderr.strip()
 
