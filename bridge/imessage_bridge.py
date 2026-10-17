@@ -94,6 +94,51 @@ def last_messages(limit: int = 40) -> list:
     ]
     return list(reversed(messages))
 
+
+# ---------- tapback (reaction) reading ----------
+
+TAPBACK_NAMES = {1: "liked", 2: "disliked", 3: "loved", 4: "laughed at", 5: "emphasized", 6: "questioned"}
+
+def recent_tapbacks(limit: int = 10) -> list:
+    """Get recent tapbacks (thumbs up, heart, etc) from him on our messages."""
+    connection = sqlite3.connect(
+        "file:" + MESSAGE_DB + "?mode=ro", uri=True, timeout=5
+    )
+    try:
+        rows = connection.execute(
+            """SELECT m.ROWID, m.associated_message_type, m.associated_message_guid, m.text
+               FROM message m
+               JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+               JOIN chat c ON c.ROWID = cmj.chat_id
+               WHERE (c.chat_identifier = ? OR c.chat_identifier = 'E:' || ?
+                  OR c.chat_identifier = '+1' || ? OR c.chat_identifier = '1' || ?)
+               AND m.is_from_me = 0
+               AND m.associated_message_type > 0
+               ORDER BY m.ROWID DESC LIMIT ?""",
+            (USER_HANDLE, USER_HANDLE, USER_HANDLE, USER_HANDLE, limit),
+        ).fetchall()
+    finally:
+        connection.close()
+    result = []
+    for row in rows:
+        tap_type = TAPBACK_NAMES.get(row[1], "reacted to")
+        # Get the original message text for context
+        orig_text = ""
+        try:
+            conn2 = sqlite3.connect("file:" + MESSAGE_DB + "?mode=ro", uri=True, timeout=5)
+            try:
+                r = conn2.execute(
+                    "SELECT text FROM message WHERE guid = ? LIMIT 1",
+                    (row[2],)).fetchone()
+                if r and r[0]:
+                    orig_text = str(r[0])[:80]
+            finally:
+                conn2.close()
+        except Exception:
+            pass
+        result.append({"id": str(row[0]), "reaction": tap_type, "on": orig_text})
+    return list(reversed(result))
+
 # ---------- sending (AppleScript) ----------
 
 def osascript(script: str) -> str:
@@ -891,6 +936,14 @@ def main() -> None:
                 seen.add(message["id"])
                 history.append({"role": "user", "content": text, "ts": time.time()})
                 prune_history(history)
+                # Check for new tapbacks and add as context
+                for tb in recent_tapbacks():
+                    tb_key = "tapback_" + tb["id"]
+                    if tb_key not in seen:
+                        seen.add(tb_key)
+                        ctx = "[He %s your message%s]" % (tb["reaction"],
+                               (": '" + tb["on"] + "'") if tb["on"] else "")
+                        history.append({"role": "user", "content": ctx, "ts": time.time()})
                 email_reply = try_email_command(text)
                 if email_reply is not None:
                     reply = email_reply
