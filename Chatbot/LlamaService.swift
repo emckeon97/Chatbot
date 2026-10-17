@@ -95,6 +95,10 @@ final class LlamaService {
                     "temperature": (settings.object(forKey: Defaults.temperatureKey) as? Double) ?? Defaults.temperature,
                 ]
 
+                // Think-tag filter state (handles tags split across chunks)
+                var inThink = false
+                var thinkBuffer = ""
+
                 // Try each server in order
                 var lastError: Error = URLError(.cannotConnectToHost)
                 for base in servers {
@@ -122,7 +126,37 @@ final class LlamaService {
                                   let delta = choices.first?["delta"] as? [String: Any],
                                   let content = delta["content"] as? String,
                                   !content.isEmpty else { continue }
-                            continuation.yield(content)
+                            // Strip <think>...</think> blocks (may span chunks)
+                            thinkBuffer += content
+                            var out = ""
+                            while !thinkBuffer.isEmpty {
+                                if inThink {
+                                    if let end = thinkBuffer.range(of: "</think>") {
+                                        thinkBuffer = String(thinkBuffer[end.upperBound...])
+                                        inThink = false
+                                    } else {
+                                        thinkBuffer = ""
+                                    }
+                                } else if let start = thinkBuffer.range(of: "<think>") {
+                                    out += thinkBuffer[..<start.lowerBound]
+                                    thinkBuffer = String(thinkBuffer[start.upperBound...])
+                                    inThink = true
+                                } else {
+                                    // No complete tag yet; hold back a tail in case "<think" is split
+                                    let hold = min(thinkBuffer.count, 7)
+                                    let splitAt = thinkBuffer.index(thinkBuffer.endIndex, offsetBy: -hold)
+                                    out += thinkBuffer[..<splitAt]
+                                    thinkBuffer = String(thinkBuffer[splitAt...])
+                                    break
+                                }
+                            }
+                            if !out.isEmpty {
+                                continuation.yield(out)
+                            }
+                        }
+                        // Flush leftover non-think text
+                        if !inThink && !thinkBuffer.isEmpty {
+                            continuation.yield(thinkBuffer)
                         }
                         continuation.finish()
                         return  // Success
