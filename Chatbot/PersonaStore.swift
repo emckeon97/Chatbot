@@ -56,10 +56,12 @@ final class PersonaStore: ObservableObject {
         } else {
             personas = PersonaStore.seed
         }
-        // Ensure built-in JARVIS exists on existing installs
-        if !personas.contains(where: { $0.name == "JARVIS" }),
-           let jarvis = PersonaStore.seed.first(where: { $0.name == "JARVIS" }) {
-            personas.insert(jarvis, at: 0)
+        // Ensure built-in personas exist on existing installs
+        for builtin in ["JARVIS", "Seraphina Vale", "Maya"] {
+            if !personas.contains(where: { $0.name == builtin }),
+               let p = PersonaStore.seed.first(where: { $0.name == builtin }) {
+                personas.insert(p, at: 0)
+            }
         }
         save()
     }
