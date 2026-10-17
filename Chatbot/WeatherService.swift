@@ -25,13 +25,16 @@ final class WeatherService: NSObject, ObservableObject {
                 // Fall back to Charlotte
                 return await fetchCoords(lat: 35.2271, lon: -80.8431, name: "Charlotte")
             } else {
-                let request = MKGeocodingRequest(addressString: location)
-                let items = try await request.start()
-                guard let item = items.first, let loc = item.location else {
+                guard let request = MKGeocodingRequest(addressString: location) else {
                     return "Couldn't find that place."
                 }
+                let items = try await request.mapItems
+                guard let item = items.first else {
+                    return "Couldn't find that place."
+                }
+                let coord = item.placemark.coordinate
                 let placeName = item.name ?? location
-                return await fetchCoords(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude, name: placeName)
+                return await fetchCoords(lat: coord.latitude, lon: coord.longitude, name: placeName)
             }
         } catch {
             return "Weather lookup failed."
