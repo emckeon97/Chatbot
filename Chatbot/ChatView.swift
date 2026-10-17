@@ -44,9 +44,9 @@ struct ChatView: View {
                 },
                 onStop: {
                     store.stop()
-                },
+                }
                 #if canImport(UIKit)
-                onImage: { image in
+                , onImage: { image in
                     conversationID = store.sendImage(image, prompt: "What's in this image?", in: conversationID)
                 }
                 #endif
