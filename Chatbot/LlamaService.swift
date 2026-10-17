@@ -189,8 +189,9 @@ final class LlamaService {
                     ?? (settings.string(forKey: Defaults.systemKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 let memoryContext = await MemoryService.shared.promptContext()
                 if !memoryContext.isEmpty { systemPrompt += memoryContext }
-                // Tool instruction
+                // Tool instruction + plan-first rule
                 systemPrompt += "\n\nYou have tools available. When the user asks for current info, calculations, or actions, call the appropriate tool instead of guessing. Keep responses short."
+                systemPrompt += "\n\nCRITICAL RULE: Before taking ANY action that changes external state — creating/updating files on GitHub, sending emails, adding calendar events, scheduling anything — you MUST first present a clear plan of exactly what you will do and wait for the user to explicitly confirm. Never execute these silently. Read-only actions (searching, reading files, checking weather) don't need confirmation."
                 if !systemPrompt.isEmpty {
                     payload.append(["role": "system", "content": systemPrompt])
                 }
