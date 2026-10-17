@@ -239,25 +239,31 @@ def ask_with_tools(history):
     messages.extend(
         {"role": entry["role"], "content": entry["content"]} for entry in window
     )
+    # Use Ollama native /api/chat for tools (better support than /v1/chat/completions)
+    native_url = OLLAMA_URL.replace("/v1/chat/completions", "/api/chat")
     body = json.dumps({"model": MODEL, "messages": messages, "stream": False, "tools": TOOLS, "options": {"num_predict": 500}}).encode()
-    request = urllib.request.Request(OLLAMA_URL, data=body, headers={"Content-Type": "application/json"})
+    request = urllib.request.Request(native_url, data=body, headers={"Content-Type": "application/json"})
     tool_results = []
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             data = json.load(response)
-        msg = data["choices"][0]["message"]
+        msg = data.get("message", {})
         tool_calls = msg.get("tool_calls") or []
         if tool_calls:
-            tool_results.append({"role": "assistant", "tool_calls": tool_calls, "content": msg.get("content") or ""})
+            # Convert native format to OpenAI format for the follow-up
+            oai_calls = []
             for tc in tool_calls:
                 fn = tc.get("function", {})
-                tname = fn.get("name", "")
-                try:
-                    targs = json.loads(fn.get("arguments", "{}"))
-                except Exception:
-                    targs = {}
-                result = execute_tool(tname, targs)
-                tool_results.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result})
+                oai_calls.append({
+                    "id": "call_%d" % id(tc),
+                    "type": "function",
+                    "function": {"name": fn.get("name", ""), "arguments": json.dumps(fn.get("arguments", {}))},
+                })
+            tool_results.append({"role": "assistant", "tool_calls": oai_calls, "content": msg.get("content") or ""})
+            for tc, oai in zip(tool_calls, oai_calls):
+                fn = tc.get("function", {})
+                result = execute_tool(fn.get("name", ""), fn.get("arguments", {}))
+                tool_results.append({"role": "tool", "tool_call_id": oai["id"], "content": result})
     except Exception as e:
         print("tool phase failed:", e)
     if not tool_results:
