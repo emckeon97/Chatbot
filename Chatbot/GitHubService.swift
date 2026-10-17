@@ -94,6 +94,33 @@ final class GitHubService {
         } catch { return "Failed: \(error.localizedDescription)" }
     }
 
+    func listFiles(repo: String, path: String = "") async -> String {
+        do {
+            // Get the full tree recursively
+            let json = try await request("repos/\(repo)/git/trees/main?recursive=1") as? [String: Any] ?? [:]
+            guard let tree = json["tree"] as? [[String: Any]] else {
+                // Fallback: list single directory
+                let items = try await request("repos/\(repo)/contents/\(path)") as? [[String: Any]] ?? []
+                return items.compactMap { i -> String? in
+                    guard let name = i["name"] as? String, let type = i["type"] as? String else { return nil }
+                    return type == "dir" ? "📁 \(name)/" : "📄 \(name)"
+                }.joined(separator: "\n")
+            }
+            let prefix = path.isEmpty ? "" : path + "/"
+            let files = tree.compactMap { t -> String? in
+                guard let p = t["path"] as? String, p.hasPrefix(prefix),
+                      t["type"] as? String == "blob" else { return nil }
+                return String(p.dropFirst(prefix.count))
+            }
+            .filter { !$0.isEmpty && !$0.contains(".git/") }
+            .sorted()
+            if files.isEmpty { return "No files found." }
+            // Group by top-level directory for readability
+            return "Files in \(repo)\(path.isEmpty ? "" : "/\(path)")):\n" + files.prefix(100).joined(separator: "\n") +
+                (files.count > 100 ? "\n... (\(files.count - 100) more)" : "")
+        } catch { return "Failed: \(error.localizedDescription)" }
+    }
+
     func listCommits(repo: String, count: Int = 5) async -> String {
         do {
             let json = try await request("repos/\(repo)/commits?per_page=\(count)") as? [[String: Any]] ?? []
