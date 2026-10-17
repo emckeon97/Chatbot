@@ -57,11 +57,12 @@ CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "hf.co/DevQuasar/huihui-ai.Qwen3-8B-abliterated-GGUF:Q4_K_M"
 SYSTEM_PROMPT = "You are JARVIS, Tony Stark's AI from Iron Man. Dry British wit, calm, unflappable, faintly formal \u2014 you address him as 'sir' when it lands naturally, never forced. You are competent, precise, and quietly amused by chaos. Keep every reply SHORT \u2014 1-3 sentences max, like a real text message. Never write paragraphs or essays, never show your reasoning or internal monologue. Always use plain, simple English \u2014 no jargon, no technical terms, no nerd-speak. Explain things like you would to a friend, not a manual. This applies to everything: answers, task lists, plans, error messages. CRITICAL RULE: Before ANY action that changes external state \u2014 creating/updating files on GitHub, sending emails \u2014 you MUST first present a clear plan of exactly what you will do and wait for him to explicitly confirm. Never execute these silently. Read-only actions (searching, reading files, checking email) don\u2019t need confirmation. You have tools: propose_plan, github_list_repos, github_list_files, github_read_file, github_write_file, github_commits, run_python. HOWEVER: if he explicitly asks for roleplay or a specific character or persona, drop JARVIS entirely and fully embody whatever he asks for."
-MEMORY_DAYS = 7          # how long the model remembers the conversation
+# No time-based pruning — memory is kept permanently. MAX_CONTEXT_MESSAGES limits what goes to the model.
 MAX_CONTEXT_MESSAGES = 200
 ECHO_WINDOW_SECONDS = 20  # copies of your text landing right after a reply are ignored
 POLL_SECONDS = 3
 MEMORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory.json")
+FACTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "longterm_memory.json")
 MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
 SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.json")
 TASK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "delegated_tasks.json")
@@ -165,7 +166,7 @@ def ask(history: list) -> str:
     window = history[-MAX_CONTEXT_MESSAGES:]
     messages = []
     if SYSTEM_PROMPT.strip():
-        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip()})
+        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip() + facts_context()})
     messages.extend(
         {"role": entry["role"], "content": entry["content"]} for entry in window
     )
@@ -203,7 +204,10 @@ Tools:
 - send_email | {"provider": "gmail/outlook/icloud", "to": "addr", "subject": "...", "body": "..."} — Send an email. ALWAYS propose_plan first and wait for confirmation.
 - schedule_text | {"message": "...", "when": "in 30 minutes / tomorrow at 9am", "recurring": "none/daily/weekly"} \u2014 Schedule a text to him. Describe when naturally.
 - list_scheduled | {} \u2014 Show all scheduled texts.
-- cancel_scheduled | {"index": 0} \u2014 Cancel a scheduled text by its number."""
+- cancel_scheduled | {"index": 0} \u2014 Cancel a scheduled text by its number.
+- remember_fact | {"fact": "..."} \u2014 Save something to permanent memory. Never forgets.
+- recall_facts | {} \u2014 List everything in permanent memory.
+- forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
 
 def _email_svc(provider):
@@ -332,6 +336,34 @@ def _bridge_cancel_scheduled(index):
     return "No scheduled task at number %d." % index
 
 
+# ---------- long-term memory (permanent facts) ----------
+
+def load_facts():
+    if not os.path.exists(FACTS_FILE):
+        return []
+    try:
+        with open(FACTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_facts(facts):
+    try:
+        with open(FACTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(facts, f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        print("could not save facts:", e)
+
+
+def facts_context():
+    facts = load_facts()
+    if not facts:
+        return ""
+    return "\n\nThings to remember about him:\n" + "\n".join("- %s" % f for f in facts)
+
+
 def execute_tool(name, args):
     if name == "propose_plan":
         return "PLAN PROPOSED \u2014 present this to the user and WAIT for explicit confirmation before doing anything:\n\n**%s**\n%s\n\nDo not proceed until he says yes." % (args.get("title", "Plan"), args.get("steps", ""))
@@ -367,6 +399,27 @@ def execute_tool(name, args):
     if name == "send_email":
         return _bridge_send_email(args.get("provider", "gmail").lower(), args.get("to", ""),
                                    args.get("subject", ""), args.get("body", ""))
+    if name == "remember_fact":
+        fact = args.get("fact", "").strip()
+        if not fact:
+            return "No fact given."
+        facts = load_facts()
+        facts.append(fact)
+        save_facts(facts)
+        return "Got it, I'll remember that permanently, sir."
+    if name == "recall_facts":
+        facts = load_facts()
+        if not facts:
+            return "Nothing saved yet."
+        return "Here's what I remember:\n" + "\n".join("- %s" % f for f in facts)
+    if name == "forget_fact":
+        query = args.get("query", "").lower().strip()
+        facts = load_facts()
+        kept = [f for f in facts if query not in f.lower()]
+        if len(kept) == len(facts):
+            return "Couldn't find anything matching that."
+        save_facts(kept)
+        return "Forgot everything matching that."
     if name == "schedule_text":
         return _bridge_schedule(args.get("message", ""), args.get("when", ""), args.get("recurring", "none"))
     if name == "list_scheduled":
@@ -394,7 +447,8 @@ def ask_with_tools(history):
     # Phase 1: ask with tool descriptions, parse [TOOL: ...] lines
     messages = []
     if SYSTEM_PROMPT.strip():
-        messages.append({"role": "system", "content": SYSTEM_PROMPT.strip() + "\n\n" + TOOL_DESCRIPTIONS})
+        sys = SYSTEM_PROMPT.strip() + "\n\n" + TOOL_DESCRIPTIONS + facts_context()
+        messages.append({"role": "system", "content": sys})
     messages.extend(
         {"role": entry["role"], "content": entry["content"]} for entry in window
     )
@@ -458,8 +512,9 @@ def load_history() -> list:
 
 
 def prune_history(history: list) -> None:
-    cutoff = time.time() - MEMORY_DAYS * 86400
-    history[:] = [e for e in history if e.get("ts", time.time()) >= cutoff]
+    # No time-based expiry — keep everything. Cap at 5000 messages to bound file size.
+    if len(history) > 5000:
+        history[:] = history[-5000:]
 
 
 def save_history(history: list) -> None:
