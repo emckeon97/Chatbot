@@ -47,6 +47,16 @@ final class ChatStore: ObservableObject {
             return handleScheduleRequest(action: action, message: message, date: date, recurring: recurring, original: trimmed, in: conversationID)
         }
 
+        // Weather ("weather", "weather in Charlotte")
+        if let loc = WeatherService.shared.parseQuery(trimmed) {
+            return handleWeather(location: loc, original: trimmed, in: conversationID)
+        }
+
+        // Calendar ("what's on my calendar", "add event Dentist tomorrow at 3pm")
+        if let (kind, rest) = CalendarService.shared.parse(trimmed) {
+            return handleCalendar(kind: kind, rest: rest, original: trimmed, in: conversationID)
+        }
+
         var convo: Conversation
         if let conversationID, let existing = conversation(id: conversationID) {
             convo = existing
@@ -80,6 +90,63 @@ final class ChatStore: ObservableObject {
             self.isGenerating = false
             self.generatingIn = nil
             self.save()
+        }
+        return targetID
+    }
+
+    private func handleWeather(location: String, original: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
+        upsert(convo)
+        let targetID = convo.id
+        isGenerating = true
+        generatingIn = targetID
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await WeatherService.shared.fetch(location: location)
+            await MainActor.run {
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
+                self.isGenerating = false
+                self.generatingIn = nil
+                self.save()
+            }
+        }
+        return targetID
+    }
+
+    private func handleCalendar(kind: String, rest: String, original: String, in conversationID: UUID?) -> UUID? {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
+        upsert(convo)
+        let targetID = convo.id
+        isGenerating = true
+        generatingIn = targetID
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            let result: String
+            if kind == "list" {
+                result = await CalendarService.shared.listToday()
+            } else {
+                result = await CalendarService.shared.addEvent(rest)
+            }
+            await MainActor.run {
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
+                self.isGenerating = false
+                self.generatingIn = nil
+                self.save()
+            }
         }
         return targetID
     }
@@ -220,6 +287,52 @@ final class ChatStore: ObservableObject {
 
     func stop() {
         streamTask?.cancel()
+    }
+
+    /// Remove the last assistant message and regenerate.
+    func regenerate(in conversationID: UUID?) {
+        guard let conversationID, var convo = conversation(id: conversationID),
+              !isGenerating else { return }
+        // Drop trailing assistant message(s)
+        while convo.messages.last?.role == .assistant {
+            convo.messages.removeLast()
+        }
+        guard convo.messages.last?.role == .user else { return }
+        upsert(convo)
+        let targetID = convo.id
+        streamingText = ""
+        isGenerating = true
+        generatingIn = targetID
+        let history = convo.messages
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await chunk in self.service.stream(messages: history) {
+                    self.streamingText += chunk
+                }
+                self.completeStream(into: targetID)
+            } catch is CancellationError {
+                self.completeStream(into: targetID)
+            } catch {
+                self.completeStream(into: targetID)
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: "Error: \(error.localizedDescription)"))
+            }
+            self.isGenerating = false
+            self.generatingIn = nil
+            self.save()
+        }
+    }
+
+    /// Plain-text export of a conversation for sharing.
+    func exportText(in conversationID: UUID?) -> String {
+        guard let conversationID, let convo = conversation(id: conversationID) else { return "" }
+        var lines = [convo.title.isEmpty ? "Chatbot conversation" : convo.title, ""]
+        for m in convo.messages {
+            let who = m.role == .user ? "You" : "JARVIS"
+            lines.append("\(who): \(m.content)")
+            lines.append("")
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Send an image to the vision model (moondream fallback).
