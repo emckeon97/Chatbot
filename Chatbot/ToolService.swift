@@ -77,6 +77,11 @@ final class ToolService {
                                             "content": ["type": "string", "description": "full file content"],
                                             "message": ["type": "string", "description": "commit message"]],
                              "required": ["repo", "path", "content", "message"]]),
+        ToolDef(name: "github_list_files",
+                description: "List all files in a GitHub repo (recursive). Use this first to understand a project's structure.",
+                parameters: ["type": "object",
+                             "properties": ["repo": ["type": "string", "description": "e.g. emckeon97/Chatbot"]],
+                             "required": ["repo"]]),
         ToolDef(name: "github_commits",
                 description: "List recent commits on a GitHub repo.",
                 parameters: ["type": "object",
@@ -145,6 +150,9 @@ final class ToolService {
                 path: arguments["path"] as? String ?? "",
                 content: arguments["content"] as? String ?? "",
                 message: arguments["message"] as? String ?? "Update via Chatbot")
+        case "github_list_files":
+            return await GitHubService.shared.listFiles(
+                repo: arguments["repo"] as? String ?? "")
         case "github_commits":
             return await GitHubService.shared.listCommits(
                 repo: arguments["repo"] as? String ?? "")
