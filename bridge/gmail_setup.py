@@ -11,7 +11,7 @@ import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-CLIENT_ID = "294125895152-cmamrfum6a6eu44gp3nd52h7amtl9q08.apps.googleusercontent.com"
+CLIENT_ID = "294125895152-j6iicnapr17dip79nogi23amqb1i8d6d.apps.googleusercontent.com"
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
           "https://www.googleapis.com/auth/gmail.send"]
 REDIRECT = "http://127.0.0.1:8765/"
