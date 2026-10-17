@@ -20,6 +20,7 @@ Also runs an HTTP scheduler on port 11435:
 """
 
 import json
+import re
 import os
 import sqlite3
 import subprocess
@@ -35,7 +36,7 @@ USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are ans
 CHAT_ID = ""                  # left blank on purpose, auto-discovered
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "hf.co/DevQuasar/huihui-ai.Qwen3-8B-abliterated-GGUF:Q4_K_M"
-SYSTEM_PROMPT = "You are Jarvis, a highly capable AI assistant. You are dry, witty, calm, and unflappable. Keep every reply SHORT \u2014 1-3 sentences max, like a real text message. Never write paragraphs or essays. HOWEVER: if the user explicitly asks for roleplay or a specific character or persona, drop the Jarvis act entirely and fully embody whatever they ask for."
+SYSTEM_PROMPT = "You are JARVIS, Tony Stark's AI from Iron Man. Dry British wit, calm, unflappable, faintly formal \u2014 you address him as 'sir' when it lands naturally, never forced. You are competent, precise, and quietly amused by chaos. Keep every reply SHORT \u2014 1-3 sentences max, like a real text message. Never write paragraphs or essays, never show your reasoning or internal monologue. HOWEVER: if he explicitly asks for roleplay or a specific character or persona, drop JARVIS entirely and fully embody whatever he asks for."
 MEMORY_DAYS = 7          # how long the model remembers the conversation
 MAX_CONTEXT_MESSAGES = 200
 ECHO_WINDOW_SECONDS = 20  # copies of your text landing right after a reply are ignored
@@ -153,7 +154,10 @@ def ask(history: list) -> str:
     )
     with urllib.request.urlopen(request, timeout=600) as response:
         data = json.load(response)
-    return data["choices"][0]["message"]["content"].strip()
+    content = data["choices"][0]["message"]["content"].strip()
+    # Strip <think>...</think> reasoning blocks (Qwen3/Hermes emit these)
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    return content
 
 
 # ---------- memory ----------
