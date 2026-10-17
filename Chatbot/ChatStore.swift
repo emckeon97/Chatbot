@@ -62,6 +62,16 @@ final class ChatStore: ObservableObject {
             return handleInfo(kind: kind, arg: arg, original: trimmed, in: conversationID)
         }
 
+        // Briefing ("brief me", "morning briefing")
+        if BriefingService.shared.parse(trimmed) {
+            return handleBriefing(original: trimmed, in: conversationID)
+        }
+
+        // Gmail in-app ("check gmail", "read 2")
+        if let (kind, arg) = GmailClient.shared.parse(trimmed) {
+            return handleGmail(kind: kind, arg: arg, original: trimmed, in: conversationID)
+        }
+
         var convo: Conversation
         if let conversationID, let existing = conversation(id: conversationID) {
             convo = existing
@@ -188,6 +198,78 @@ final class ChatStore: ObservableObject {
         }
         return targetID
     }
+
+    private func handleBriefing(original: String, in conversationID: UUID?) -> UUID? {
+        let targetID = appendUser(original, in: conversationID)
+        isGenerating = true
+        generatingIn = targetID
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await BriefingService.shared.build()
+            await MainActor.run {
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
+                self.isGenerating = false
+                self.generatingIn = nil
+                self.save()
+            }
+        }
+        return targetID
+    }
+
+    private func handleGmail(kind: String, arg: String, original: String, in conversationID: UUID?) -> UUID? {
+        guard GoogleAuthService.shared.isSignedIn else {
+            let targetID = appendUser(original, in: conversationID)
+            appendTo(targetID, ChatMessage(role: .assistant, content: "Connect your Google account in Settings first, sir."))
+            save()
+            return targetID
+        }
+        let targetID = appendUser(original, in: conversationID)
+        isGenerating = true
+        generatingIn = targetID
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            let result: String
+            if kind == "list" {
+                let emails = await GmailClient.shared.listInbox()
+                // Cache IDs for "read N"
+                self.gmailCache = emails
+                result = GmailClient.shared.formatList(emails)
+            } else {
+                let idx = (Int(arg) ?? 1) - 1
+                if idx >= 0, idx < self.gmailCache.count {
+                    let e = self.gmailCache[idx]
+                    let body = await GmailClient.shared.readBody(id: e.id) ?? "(couldn't load body)"
+                    let short = String(body.prefix(1500)) + (body.count > 1500 ? "..." : "")
+                    result = "From: \(e.from)\nSubject: \(e.subject)\n\n\(short)"
+                } else {
+                    result = "Say 'check gmail' first, then 'read 2', sir."
+                }
+            }
+            await MainActor.run {
+                self.appendTo(targetID, ChatMessage(role: .assistant, content: result))
+                self.isGenerating = false
+                self.generatingIn = nil
+                self.save()
+            }
+        }
+        return targetID
+    }
+
+    /// Append user message and return conversation ID (shared boilerplate).
+    private func appendUser(_ original: String, in conversationID: UUID?) -> UUID {
+        var convo: Conversation
+        if let conversationID, let existing = conversation(id: conversationID) {
+            convo = existing
+        } else {
+            convo = Conversation()
+        }
+        convo.messages.append(ChatMessage(role: .user, content: original))
+        if convo.title.isEmpty { convo.title = String(original.prefix(32)) }
+        upsert(convo)
+        return convo.id
+    }
+
+    private var gmailCache: [GmailClient.Email] = []
 
     private func handleMemoryAction(_ action: MemoryService.MemoryAction, original: String, in conversationID: UUID?) -> UUID? {
         var convo: Conversation
