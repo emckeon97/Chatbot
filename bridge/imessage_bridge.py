@@ -195,7 +195,64 @@ Tools:
 - github_write_file | {"repo": "owner/name", "path": "file/path", "content": "...", "message": "commit msg"} — Create/update a file.
 - github_commits | {"repo": "owner/name"} — Recent commits.
 - run_python | {"code": "print(2+2)"} — Run Python code, returns output.
-- delegate_task | {"task": "cancel my Spotify subscription", "details": "any extra context"} — Hand a real-world task to Jarvis (the main AI). Use for: booking reservations, canceling subscriptions, making calls, anything needing a browser or accounts you can't reach. Tell the user you've handed it off and he'll confirm when done."""
+- delegate_task | {"task": "cancel my Spotify subscription", "details": "any extra context"} — Hand a real-world task to Jarvis (the main AI). Use for: booking reservations, canceling subscriptions, making calls, anything needing a browser or accounts you can't reach. Tell the user you've handed it off and he'll confirm when done.
+- check_email | {"provider": "gmail/outlook/icloud/all", "count": 5} — List recent inbox emails.
+- read_email | {"provider": "gmail/outlook/icloud", "id": "message id"} — Read a specific email.
+- send_email | {"provider": "gmail/outlook/icloud", "to": "addr", "subject": "...", "body": "..."} — Send an email. ALWAYS propose_plan first and wait for confirmation."""
+
+
+def _email_svc(provider):
+    """Return (name, module, available) for a provider."""
+    if provider == "gmail":
+        return ("Gmail", gmail_service, GMAIL_AVAILABLE)
+    if provider == "outlook":
+        return ("Outlook", outlook_service, OUTLOOK_AVAILABLE)
+    if provider == "icloud":
+        return ("iCloud", icloud_service, ICLOUD_AVAILABLE)
+    return (provider, None, False)
+
+
+def _bridge_check_email(provider, count=5):
+    providers = ["gmail", "outlook", "icloud"] if provider == "all" else [provider]
+    out = []
+    for p in providers:
+        name, svc, avail = _email_svc(p)
+        if not avail:
+            out.append("%s: not set up." % name)
+            continue
+        try:
+            emails = svc.list_inbox(count)
+            if not emails:
+                out.append("%s: inbox empty." % name)
+            else:
+                lines = ["%s:" % name]
+                for e in emails:
+                    lines.append("- [%s] %s: %s" % (e.get("id", "?"), e.get("from", "?"), e.get("subject", "(no subject)")))
+                out.append("\n".join(lines))
+        except Exception as ex:
+            out.append("%s: error %s" % (name, ex))
+    return "\n\n".join(out)
+
+
+def _bridge_read_email(provider, msg_id):
+    name, svc, avail = _email_svc(provider)
+    if not avail:
+        return "%s not set up." % name
+    try:
+        return svc.read_email(msg_id)
+    except Exception as ex:
+        return "Error: %s" % ex
+
+
+def _bridge_send_email(provider, to, subject, body):
+    name, svc, avail = _email_svc(provider)
+    if not avail:
+        return "%s not set up." % name
+    try:
+        svc.send_email(to, subject, body)
+        return "Sent via %s to %s, sir." % (name, to)
+    except Exception as ex:
+        return "Error: %s" % ex
 
 
 def execute_tool(name, args):
@@ -224,6 +281,15 @@ def execute_tool(name, args):
                        "status": "pending", "created": time.time(), "result": None})
         save_delegated_tasks(tasks)
         return "DELEGATED \u2014 task queued (ID %s). Tell the user: 'On it \u2014 I've handed this to Jarvis, he'll confirm when it's done.' Do NOT attempt this yourself." % task_id
+    if name == "check_email":
+        provider = args.get("provider", "all").lower()
+        count = int(args.get("count", 5))
+        return _bridge_check_email(provider, count)
+    if name == "read_email":
+        return _bridge_read_email(args.get("provider", "gmail").lower(), args.get("id", ""))
+    if name == "send_email":
+        return _bridge_send_email(args.get("provider", "gmail").lower(), args.get("to", ""),
+                                   args.get("subject", ""), args.get("body", ""))
     if not GITHUB_AVAILABLE:
         return "GitHub not available on bridge."
     if name == "github_list_repos":
