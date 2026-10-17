@@ -125,45 +125,58 @@ def send_email(to, subject, body):
 # ---------- IMAP fallback (app password) ----------
 
 def _app_creds():
+    """Return list of {email, password} dicts. Supports single dict or list."""
     for p in ["/Users/AI/.chatbot/outlook_imap.json", os.path.expanduser("~/.chatbot/outlook_imap.json")]:
         if os.path.exists(p):
             with open(p) as f:
-                return json.load(f)
-    return None
+                data = json.load(f)
+            if isinstance(data, dict):
+                return [data]
+            return data
+    return []
 
 
 def _imap_list(count=5):
     import imaplib, email as email_lib
-    creds = _app_creds()
-    if not creds:
+    accounts = _app_creds()
+    if not accounts:
         return None
-    conn = imaplib.IMAP4_SSL("outlook.office365.com", 993)
-    try:
-        conn.login(creds["email"], creds["password"])
-        conn.select("INBOX")
-        _, data = conn.search(None, "ALL")
-        uids = data[0].split()[-count:]
-        out = []
-        for uid in reversed(uids):
-            _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
-            raw = b"".join(p[1] for p in msg_data if isinstance(p, tuple))
-            msg = email_lib.message_from_bytes(raw)
-            out.append({
-                "id": uid.decode(),
-                "from": str(msg.get("From", "?")),
-                "subject": str(msg.get("Subject", "(no subject)")),
-            })
-        return out
-    finally:
-        try: conn.logout()
-        except: pass
+    out = []
+    for creds in accounts:
+        conn = imaplib.IMAP4_SSL("outlook.office365.com", 993)
+        try:
+            conn.login(creds["email"], creds["password"])
+            conn.select("INBOX")
+            _, data = conn.search(None, "ALL")
+            uids = data[0].split()[-count:]
+            for uid in reversed(uids):
+                _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+                raw = b"".join(p[1] for p in msg_data if isinstance(p, tuple))
+                msg = email_lib.message_from_bytes(raw)
+                out.append({
+                    "id": "%s:%s" % (creds["email"], uid.decode()),
+                    "from": str(msg.get("From", "?")),
+                    "subject": str(msg.get("Subject", "(no subject)")),
+                    "account": creds["email"],
+                })
+        except Exception as e:
+            out.append({"id": "?", "from": "?", "subject": "Error on %s: %s" % (creds["email"], e), "account": creds["email"]})
+        finally:
+            try: conn.logout()
+            except: pass
+    return out
 
 
 def _imap_read(uid):
     import imaplib, email as email_lib
-    creds = _app_creds()
-    if not creds:
+    accounts = _app_creds()
+    if not accounts:
         return None
+    # uid may be "email:uid" for multi-account
+    target_email = None
+    if ":" in str(uid) and "@" in str(uid).split(":")[0]:
+        target_email, uid = str(uid).split(":", 1)
+    creds = next((c for c in accounts if c["email"] == target_email), accounts[0])
     conn = imaplib.IMAP4_SSL("outlook.office365.com", 993)
     try:
         conn.login(creds["email"], creds["password"])
@@ -187,12 +200,13 @@ def _imap_read(uid):
         except: pass
 
 
-def _imap_send(to, subject, body):
+def _imap_send(to, subject, body, from_email=None):
     import smtplib
     from email.mime.text import MIMEText
-    creds = _app_creds()
-    if not creds:
+    accounts = _app_creds()
+    if not accounts:
         return None
+    creds = next((c for c in accounts if c["email"] == from_email), accounts[0]) if from_email else accounts[0]
     msg = MIMEText(body)
     msg["From"] = creds["email"]
     msg["To"] = to
