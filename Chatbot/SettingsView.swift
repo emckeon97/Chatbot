@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject private var googleAuth = GoogleAuthService.shared
     @AppStorage("serverURL") private var serverURL = "http://192.168.0.102:11434"
     @AppStorage("tailscaleServer") private var tailscaleURL = ""
     @AppStorage("modelName") private var modelName = "dolphin-llama3:8b"
@@ -78,6 +79,29 @@ struct SettingsView: View {
             Section("System prompt (used when no character is active)") {
                 TextEditor(text: $systemPrompt)
                     .frame(minHeight: 80)
+            }
+            Section("Google") {
+                if googleAuth.isSignedIn {
+                    HStack {
+                        Text(googleAuth.userEmail ?? "Signed in")
+                        Spacer()
+                        Button("Sign Out") {
+                            googleAuth.signOut()
+                        }
+                        .foregroundStyle(.red)
+                    }
+                } else {
+                    Button("Connect Google Account") {
+                        googleAuth.signIn()
+                    }
+                    if let err = googleAuth.errorMessage {
+                        Text(err)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+            } footer: {
+                Text("Connect your Google account for Gmail access.")
             }
             Section {
                 Text("Changes apply from your next message.")
