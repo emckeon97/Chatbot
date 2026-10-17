@@ -217,7 +217,6 @@ final class ChatStore: ObservableObject {
         }
         return targetID
     }
-    #endif
 
     func stop() {
         streamTask?.cancel()
@@ -261,6 +260,7 @@ final class ChatStore: ObservableObject {
         }
         return targetID
     }
+    #endif
 
     func clearMessages(in conversationID: UUID?) {
         guard let conversationID, let convo = conversation(id: conversationID) else { return }
