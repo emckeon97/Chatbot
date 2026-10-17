@@ -90,19 +90,10 @@ struct SettingsView: View {
             } footer: {
                 Text("Connect your Google account for Gmail access.")
             }
-            Section("Call Voice") {
-                if availableVoices.isEmpty {
-                    Text("No voices found")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Voice", selection: $callVoiceIdentifier) {
-                        Text("Auto (best available)").tag("")
-                        ForEach(availableVoices, id: \.identifier) { voice in
-                            Text("\(voice.name) (\(voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default"))").tag(voice.identifier)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
+            Section {
+                VoicePickerRow(voices: availableVoices, selection: $callVoiceIdentifier)
+            } header: {
+                Text("Call Voice")
             } footer: {
                 Text("Download premium voices in Settings > Accessibility > Spoken Content > Voices for the most natural sound.")
             }
@@ -165,6 +156,26 @@ private struct GoogleSignInRow: View {
                         .foregroundStyle(.red)
                 }
             }
+        }
+    }
+}
+
+private struct VoicePickerRow: View {
+    let voices: [AVSpeechSynthesisVoice]
+    @Binding var selection: String
+
+    var body: some View {
+        if voices.isEmpty {
+            Text("No voices found")
+                .foregroundStyle(.secondary)
+        } else {
+            Picker("Voice", selection: $selection) {
+                Text("Auto (best available)").tag("")
+                ForEach(voices, id: \.identifier) { voice in
+                    Text("\(voice.name) (\(voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default"))").tag(voice.identifier)
+                }
+            }
+            .pickerStyle(.menu)
         }
     }
 }
