@@ -60,6 +60,28 @@ final class ToolService {
         ToolDef(name: "get_briefing",
                 description: "Get a combined briefing: weather, today's calendar, and top headlines.",
                 parameters: ["type": "object", "properties": [:]]),
+        ToolDef(name: "github_list_repos",
+                description: "List the user's GitHub repositories.",
+                parameters: ["type": "object", "properties": [:]]),
+        ToolDef(name: "github_read_file",
+                description: "Read a file from a GitHub repo.",
+                parameters: ["type": "object",
+                             "properties": ["repo": ["type": "string", "description": "e.g. emckeon97/Chatbot"],
+                                            "path": ["type": "string", "description": "file path in repo"]],
+                             "required": ["repo", "path"]]),
+        ToolDef(name: "github_write_file",
+                description: "Create or update a file in a GitHub repo. Commits directly to the branch.",
+                parameters: ["type": "object",
+                             "properties": ["repo": ["type": "string"],
+                                            "path": ["type": "string"],
+                                            "content": ["type": "string", "description": "full file content"],
+                                            "message": ["type": "string", "description": "commit message"]],
+                             "required": ["repo", "path", "content", "message"]]),
+        ToolDef(name: "github_commits",
+                description: "List recent commits on a GitHub repo.",
+                parameters: ["type": "object",
+                             "properties": ["repo": ["type": "string"]],
+                             "required": ["repo"]]),
     ]
 
     /// OpenAI-format tools array for the request.
@@ -111,6 +133,21 @@ final class ToolService {
             return GmailClient.shared.formatList(emails)
         case "get_briefing":
             return await BriefingService.shared.build()
+        case "github_list_repos":
+            return await GitHubService.shared.listRepos()
+        case "github_read_file":
+            return await GitHubService.shared.readFile(
+                repo: arguments["repo"] as? String ?? "",
+                path: arguments["path"] as? String ?? "")
+        case "github_write_file":
+            return await GitHubService.shared.writeFile(
+                repo: arguments["repo"] as? String ?? "",
+                path: arguments["path"] as? String ?? "",
+                content: arguments["content"] as? String ?? "",
+                message: arguments["message"] as? String ?? "Update via Chatbot")
+        case "github_commits":
+            return await GitHubService.shared.listCommits(
+                repo: arguments["repo"] as? String ?? "")
         default:
             return "Unknown tool: \(name)"
         }
