@@ -11,7 +11,32 @@ final class PersonaStore: ObservableObject {
         .appendingPathComponent("personas.json")
 
     private init() {
-        load()
+        // Load async so launch isn't blocked on disk I/O
+        Task { [weak self] in
+            let loaded = await Self.loadFromDisk()
+            await MainActor.run {
+                self?.personas = loaded
+                self?.ensureBuiltins()
+                self?.save()
+            }
+        }
+    }
+
+    private static func loadFromDisk() async -> [Persona] {
+        guard let data = try? Data(contentsOf: Self.archive),
+              let decoded = try? JSONDecoder().decode([Persona].self, from: data) else {
+            return PersonaStore.seed
+        }
+        return decoded
+    }
+
+    private func ensureBuiltins() {
+        for builtin in ["JARVIS", "Seraphina Vale", "Maya"] {
+            if !personas.contains(where: { $0.name == builtin }),
+               let p = PersonaStore.seed.first(where: { $0.name == builtin }) {
+                personas.insert(p, at: 0)
+            }
+        }
     }
 
     var activeName: String? { personas.first(where: { $0.isActive })?.name }
@@ -47,23 +72,6 @@ final class PersonaStore: ObservableObject {
               let active = personas.first(where: { $0.isActive }) else { return nil }
         let prompt = active.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         return prompt.isEmpty ? nil : prompt
-    }
-
-    private func load() {
-        if let data = try? Data(contentsOf: Self.archive),
-           let decoded = try? JSONDecoder().decode([Persona].self, from: data) {
-            personas = decoded
-        } else {
-            personas = PersonaStore.seed
-        }
-        // Ensure built-in personas exist on existing installs
-        for builtin in ["JARVIS", "Seraphina Vale", "Maya"] {
-            if !personas.contains(where: { $0.name == builtin }),
-               let p = PersonaStore.seed.first(where: { $0.name == builtin }) {
-                personas.insert(p, at: 0)
-            }
-        }
-        save()
     }
 
     private func save() {
