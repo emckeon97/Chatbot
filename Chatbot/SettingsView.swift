@@ -83,26 +83,10 @@ struct SettingsView: View {
                 TextEditor(text: $systemPrompt)
                     .frame(minHeight: 80)
             }
-            Section("Google") {
-                if googleAuth.isSignedIn {
-                    HStack {
-                        Text(googleAuth.userEmail ?? "Signed in")
-                        Spacer()
-                        Button("Sign Out") {
-                            googleAuth.signOut()
-                        }
-                        .foregroundStyle(.red)
-                    }
-                } else {
-                    Button("Connect Google Account") {
-                        googleAuth.signIn()
-                    }
-                    if let err = googleAuth.errorMessage {
-                        Text(err)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
+            Section {
+                GoogleSignInRow(auth: googleAuth)
+            } header: {
+                Text("Google")
             } footer: {
                 Text("Connect your Google account for Gmail access.")
             }
@@ -158,5 +142,29 @@ struct SettingsView: View {
         let server = settings.string(forKey: "serverURL") ?? "http://192.168.0.102:11434"
         let model = settings.string(forKey: "modelName") ?? "dolphin-llama3:8b"
         return "\(model) at \(server)"
+    }
+}
+
+private struct GoogleSignInRow: View {
+    @ObservedObject var auth: GoogleAuthService
+
+    var body: some View {
+        if auth.isSignedIn {
+            HStack {
+                Text(auth.userEmail ?? "Signed in")
+                Spacer()
+                Button("Sign Out") { auth.signOut() }
+                    .foregroundStyle(.red)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Button("Connect Google Account") { auth.signIn() }
+                if let err = auth.errorMessage {
+                    Text(err)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
     }
 }
