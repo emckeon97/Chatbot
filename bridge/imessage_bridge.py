@@ -760,17 +760,61 @@ def _execute_tool_inner(name, args):
         save_facts(kept)
         return "Forgot everything matching that."
     if name == "list_email_accounts":
+        import glob, re
         out = []
-        for p, label in [("gmail", "Gmail"), ("outlook", "Outlook"), ("icloud", "iCloud")]:
-            _, svc = _email_svc(p)
-            if not svc:
-                out.append("%s: not installed" % label)
-                continue
-            try:
-                svc.list_inbox(1)
-                out.append("%s: connected" % label)
-            except Exception as ex:
-                out.append("%s: not connected (%s)" % (label, str(ex)[:60]))
+        # Gmail: read email from credential file
+        gmail_addrs = []
+        for p in ["/Users/AI/.chatbot/gmail_imap.json", os.path.expanduser("~/.chatbot/gmail_imap.json")]:
+            if os.path.exists(p):
+                try:
+                    with open(p) as f:
+                        d = json.load(f)
+                    if isinstance(d, dict) and d.get("email"):
+                        gmail_addrs.append(d["email"])
+                except:
+                    pass
+                break
+        # Outlook: from OAuth token filenames
+        outlook_addrs = []
+        for d in ["/Users/AI/.chatbot", os.path.expanduser("~/.chatbot")]:
+            if os.path.isdir(d):
+                for fp in glob.glob(os.path.join(d, "outlook_token_*.json")):
+                    m = re.search(r"outlook_token_(.+?)\.json", os.path.basename(fp))
+                    if m and m.group(1) not in outlook_addrs:
+                        outlook_addrs.append(m.group(1))
+        # Fallback to IMAP creds if no OAuth tokens
+        if not outlook_addrs:
+            for p in ["/Users/AI/.chatbot/outlook_imap.json", os.path.expanduser("~/.chatbot/outlook_imap.json")]:
+                if os.path.exists(p):
+                    try:
+                        with open(p) as f:
+                            d = json.load(f)
+                        accts = d if isinstance(d, list) else [d]
+                        for a in accts:
+                            if isinstance(a, dict) and a.get("email"):
+                                outlook_addrs.append(a["email"])
+                    except:
+                        pass
+                    break
+        # iCloud: from credential file
+        icloud_addrs = []
+        for p in ["/Users/AI/.chatbot/icloud.json", os.path.expanduser("~/.chatbot/icloud.json")]:
+            if os.path.exists(p):
+                try:
+                    with open(p) as f:
+                        d = json.load(f)
+                    if isinstance(d, dict) and d.get("email"):
+                        icloud_addrs.append(d["email"])
+                    elif isinstance(d, dict) and d.get("apple_id"):
+                        icloud_addrs.append(d["apple_id"])
+                except:
+                    pass
+                break
+        for label, addrs in [("Gmail", gmail_addrs), ("Outlook", outlook_addrs), ("iCloud", icloud_addrs)]:
+            if addrs:
+                out.append("%s: %s" % (label, ", ".join(addrs)))
+            else:
+                out.append("%s: not connected" % label)
         return "Email accounts:\n" + "\n".join("- " + l for l in out)
     # Aliases for model guesses
     _aliases = {
