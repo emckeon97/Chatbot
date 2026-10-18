@@ -10,7 +10,7 @@ import os
 
 CLIENT_ID = "dfb2f028-c13c-433a-98e2-c0c104318d7d"
 SCOPES = ["Mail.Read", "Mail.Send"]
-AUTHORITY = "https://login.microsoftonline.com/common"
+AUTHORITY = "https://login.microsoftonline.com/consumers"
 TOKEN_PATH = os.path.expanduser("~/.chatbot/outlook_token.json")
 
 
