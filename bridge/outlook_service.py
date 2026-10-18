@@ -10,16 +10,22 @@ import json
 import os
 import urllib.request
 
+def _token_paths():
+    """Find all Outlook token files (multi-account support)."""
+    import glob
+    paths = []
+    for d in ["/Users/AI/.chatbot", os.path.expanduser("~/.chatbot")]:
+        if os.path.isdir(d):
+            paths.extend(glob.glob(os.path.join(d, "outlook_token*.json")))
+    # Deduplicate by basename, prefer /Users/AI version
+    seen = {}
+    for p in paths:
+        seen.setdefault(os.path.basename(p), p)
+    return sorted(seen.values())
+
 def _token_path():
-    """Check ai user dir first, then current user dir."""
-    candidates = [
-        "/Users/AI/.chatbot/outlook_token.json",
-        os.path.expanduser("~/.chatbot/outlook_token.json"),
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    return candidates[0]
+    paths = _token_paths()
+    return paths[0] if paths else os.path.expanduser("~/.chatbot/outlook_token.json")
 
 TOKEN_PATH = _token_path()
 # Same app registration used by Muse's Outlook connector
@@ -28,20 +34,22 @@ SCOPES = ["Mail.Read", "Mail.Send"]
 AUTHORITY = "https://login.microsoftonline.com/consumers"
 
 
-def _load_token():
-    if not os.path.exists(TOKEN_PATH):
+def _load_token(path=None):
+    p = path or TOKEN_PATH
+    if not os.path.exists(p):
         return None
-    with open(TOKEN_PATH) as f:
+    with open(p) as f:
         return json.load(f)
 
 
-def _save_token(data):
-    os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
-    with open(TOKEN_PATH, "w") as f:
+def _save_token(data, path=None):
+    p = path or TOKEN_PATH
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w") as f:
         json.dump(data, f)
 
 
-def _refresh(token):
+def _refresh(token, path=None):
     from msal import PublicClientApplication
     app = PublicClientApplication(token.get("client_id", CLIENT_ID), authority=AUTHORITY)
     result = app.acquire_token_by_refresh_token(token["refresh_token"], scopes=SCOPES)
@@ -50,7 +58,7 @@ def _refresh(token):
     token["access_token"] = result["access_token"]
     if "refresh_token" in result:
         token["refresh_token"] = result["refresh_token"]
-    _save_token(token)
+    _save_token(token, path)
     return token["access_token"]
 
 
