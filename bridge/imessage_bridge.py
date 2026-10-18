@@ -256,6 +256,7 @@ Tools:
 - recall_facts | {} \u2014 List everything in permanent memory.
 - add_calendar_event | {"title": "...", "when": "tomorrow at 3pm", "duration_min": 60} \u2014 Add event to macOS Calendar.
 - list_calendar_events | {"days": 7} \u2014 List upcoming calendar events.
+- get_briefing | {} — Combined briefing: weather, calendar, headlines.
 - web_search | {"query": "...", "count": 5} \u2014 Search the web.
 - get_weather | {"location": "Charlotte"} \u2014 Current weather.
 - get_news | {"count": 5} \u2014 Top news headlines.
@@ -1084,6 +1085,26 @@ def _execute_tool_inner(name, args):
             return "Macro '%s' deleted." % mname
         except Exception as e:
             return "Couldn't delete macro: %s" % e
+
+
+    if name == "get_briefing":
+        parts = []
+        try:
+            w = _execute_tool_inner("get_weather", {})
+            parts.append("Weather:\n%s" % w)
+        except Exception as e:
+            parts.append("Weather: unavailable (%s)" % e)
+        try:
+            c = _execute_tool_inner("list_calendar_events", {"days": 1})
+            parts.append("Today's calendar:\n%s" % c)
+        except Exception as e:
+            parts.append("Calendar: unavailable (%s)" % e)
+        try:
+            n = _execute_tool_inner("get_news", {"count": 5})
+            parts.append("Headlines:\n%s" % n)
+        except Exception as e:
+            parts.append("News: unavailable (%s)" % e)
+        return "\n\n".join(parts)
 
     # Aliases for model guesses
     _aliases = {
