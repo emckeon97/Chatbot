@@ -8,7 +8,7 @@ Saves token to ~/.chatbot/outlook_token.json (auto-refreshes after).
 import json
 import os
 
-CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Azure CLI public client (supports device flow)
+CLIENT_ID = "dfb2f028-c13c-433a-98e2-c0c104318d7d"
 SCOPES = ["Mail.Read", "Mail.Send"]
 AUTHORITY = "https://login.microsoftonline.com/common"
 TOKEN_PATH = os.path.expanduser("~/.chatbot/outlook_token.json")
