@@ -688,7 +688,7 @@ def facts_context():
     return "\n\nThings to remember about him:\n" + "\n".join("- %s" % f for f in facts)
 
 
-def execute_tool(name, args):
+def _execute_tool_inner(name, args):
     if name == "propose_plan":
         return "PLAN PROPOSED \u2014 present this to the user and WAIT for explicit confirmation before doing anything:\n\n**%s**\n%s\n\nDo not proceed until he says yes." % (args.get("title", "Plan"), args.get("steps", ""))
     if name == "run_python":
@@ -819,6 +819,30 @@ def execute_tool(name, args):
     if name == "github_commits":
         return github_service.list_commits(args.get("repo", ""))
     return "Unknown tool: %s" % name
+
+
+def execute_tool(name, args):
+    """Wrapper: never hang, always respond in plain English on failure."""
+    import traceback
+    try:
+        return _execute_tool_inner(name, args)
+    except Exception as e:
+        # Log the technical details for debugging
+        tb = traceback.format_exc()
+        try:
+            with open("/Users/AI/.chatbot/tool_errors.log", "a") as f:
+                f.write(f"\n[{name}] {e}\n{tb}\n")
+        except:
+            pass
+        # Plain English to the user (no jargon per his preference)
+        friendly = {
+            "check_email": "I couldn't check your email right now.",
+            "read_email": "I couldn't open that email.",
+            "send_email": "I couldn't send that email.",
+            "list_email_accounts": "I couldn't list your email accounts.",
+        }
+        msg = friendly.get(name, f"The {name} tool ran into a problem.")
+        return f"{msg} It's logged and I'll get it fixed. (Error: {e})"
 
 
 def ask_with_tools(history):
