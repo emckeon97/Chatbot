@@ -816,6 +816,104 @@ def _execute_tool_inner(name, args):
             else:
                 out.append("%s: not connected" % label)
         return "Email accounts:\n" + "\n".join("- " + l for l in out)
+
+    if name == "lookup_contact":
+        import subprocess as sp
+        query = args.get("name", "").strip()
+        if not query:
+            return "No name given."
+        q = query.replace('"', '')
+        script = 'tell application "Contacts"\n'
+        script += 'set matches to {}\n'
+        script += 'repeat with p in people\n'
+        script += f'if (name of p contains "{q}") then\n'
+        script += 'set end of matches to (name of p)\n'
+        script += 'end if\n'
+        script += 'end repeat\n'
+        script += 'return matches\n'
+        script += 'end tell'
+        try:
+            r = sp.run(["osascript", "-e", script], capture_output=True, text=True, timeout=15)
+            out = r.stdout.strip()
+            if not out or out == "{}":
+                return "No contact found for '%s'." % query
+            return "Contacts matching '%s':\n%s" % (query, out.replace(", ", "\n"))
+        except Exception as e:
+            return "Couldn't look up contacts: %s" % e
+
+    if name == "add_reminder":
+        import subprocess as sp
+        title = args.get("title", "").strip()
+        if not title:
+            return "No reminder title given."
+        t = title.replace('"', '')
+        script = 'tell application "Reminders" to make new reminder with properties {name:"%s"}' % t
+        try:
+            sp.run(["osascript", "-e", script], capture_output=True, timeout=15)
+            return "Reminder added: %s" % title
+        except Exception as e:
+            return "Couldn't add reminder: %s" % e
+
+    if name == "list_reminders":
+        import subprocess as sp
+        script = 'tell application "Reminders"\n'
+        script += 'set out to {}\n'
+        script += 'repeat with r in reminders\n'
+        script += 'if not completed of r then\n'
+        script += 'set end of out to name of r\n'
+        script += 'end if\n'
+        script += 'end repeat\n'
+        script += 'return out\n'
+        script += 'end tell'
+        try:
+            r = sp.run(["osascript", "-e", script], capture_output=True, text=True, timeout=15)
+            out = r.stdout.strip()
+            if not out or out == "{}":
+                return "No open reminders."
+            return "Open reminders:\n%s" % out.replace(", ", "\n")
+        except Exception as e:
+            return "Couldn't list reminders: %s" % e
+
+    if name == "system_status":
+        import subprocess as sp
+        parts = []
+        try:
+            r = sp.run(["pmset", "-g", "batt"], capture_output=True, text=True, timeout=10)
+            for line in r.stdout.split("\n"):
+                if "%" in line:
+                    parts.append("Battery: " + line.strip().split(";")[0].strip())
+                    break
+        except:
+            pass
+        try:
+            r = sp.run(["osascript", "-e", "output volume of (get volume settings)"],
+                       capture_output=True, text=True, timeout=10)
+            parts.append("Volume: %s%%" % r.stdout.strip())
+        except:
+            pass
+        return "\n".join(parts) if parts else "Couldn't get system status."
+
+    if name == "music_control":
+        import subprocess as sp
+        action = args.get("action", "").lower().strip()
+        cmds = {"play": "play", "pause": "pause", "next": "next track",
+                "previous": "previous track", "toggle": "playpause"}
+        if action not in cmds:
+            return "Action must be play, pause, next, previous, or toggle."
+        try:
+            sp.run(["osascript", "-e", 'tell application "Music" to %s' % cmds[action]],
+                   capture_output=True, timeout=10)
+            r = sp.run(["osascript", "-e",
+                        'tell application "Music" to (name of current track & " - " & artist of current track)'],
+                       capture_output=True, text=True, timeout=10)
+            track = r.stdout.strip()
+            msg = "Music %s." % action
+            if track:
+                msg += " Now playing: %s" % track
+            return msg
+        except Exception as e:
+            return "Couldn't control music: %s" % e
+
     # Aliases for model guesses
     _aliases = {
         "add_event": "add_calendar_event",
