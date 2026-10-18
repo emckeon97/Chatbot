@@ -24,7 +24,7 @@ def main():
     app = PublicClientApplication(CLIENT_ID, authority=AUTHORITY)
     # Interactive browser login - simplest method
     print("Opening browser for Microsoft login...")
-    result = app.acquire_token_interactive(scopes=SCOPES, redirect_uri="https://login.microsoftonline.com/common/oauth2/nativeclient")
+    result = app.acquire_token_interactive(scopes=SCOPES)
     if "access_token" not in result:
         print("Failed:", result.get("error_description", result))
         return
