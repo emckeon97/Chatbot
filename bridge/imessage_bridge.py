@@ -273,7 +273,11 @@ Tools:
 - sleep_display | {} — Put the display to sleep.
 - open_app | {"app": "Safari"} — Open an app on the Mac.
 - take_screenshot | {} — Take a Mac screenshot.
-- get_clipboard | {} — Read the Mac clipboard. — Control Music.app. \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
+- get_clipboard | {}
+- save_macro | {"name": "movie night", "steps": [{"tool": "set_volume", "args": {"level": 30}}, {"tool": "open_app", "args": {"app": "Netflix"}}]} — Save a multi-step macro.
+- run_macro | {"name": "movie night"} — Run a saved macro.
+- list_macros | {} — List saved macros.
+- delete_macro | {"name": "movie night"} — Delete a macro. — Read the Mac clipboard. — Control Music.app. \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
 - forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
 
@@ -991,6 +995,95 @@ def _execute_tool_inner(name, args):
             return "Clipboard:\n%s" % clip
         except Exception as e:
             return "Couldn't read clipboard: %s" % e
+
+
+    if name == "save_macro":
+        mname = args.get("name", "").strip().lower()
+        steps = args.get("steps", [])
+        if not mname:
+            return "No macro name given."
+        if not steps or not isinstance(steps, list):
+            return "No steps given. Steps should be a list of {tool, args}."
+        try:
+            mp = os.path.expanduser("~/.chatbot/macros.json")
+            ai_mp = "/Users/AI/.chatbot/macros.json"
+            use_p = ai_mp if os.path.isdir("/Users/AI/.chatbot") else mp
+            macros = {}
+            if os.path.exists(use_p):
+                with open(use_p) as f:
+                    macros = json.load(f)
+            macros[mname] = steps
+            os.makedirs(os.path.dirname(use_p), exist_ok=True)
+            with open(use_p, "w") as f:
+                json.dump(macros, f, indent=2)
+            return "Macro '%s' saved with %d steps." % (mname, len(steps))
+        except Exception as e:
+            return "Couldn't save macro: %s" % e
+
+    if name == "run_macro":
+        mname = args.get("name", "").strip().lower()
+        if not mname:
+            return "No macro name given."
+        try:
+            macros = {}
+            for p in ["/Users/AI/.chatbot/macros.json", os.path.expanduser("~/.chatbot/macros.json")]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        macros = json.load(f)
+                    break
+            if mname not in macros:
+                return "No macro named '%s'. Use list_macros to see saved ones." % mname
+            results = []
+            for step in macros[mname]:
+                tool = step.get("tool", "")
+                targs = step.get("args", {})
+                try:
+                    r = _execute_tool_inner(tool, targs)
+                    results.append("%s: %s" % (tool, str(r)[:100]))
+                except Exception as e:
+                    results.append("%s: FAILED (%s)" % (tool, e))
+            return "Ran macro '%s':\n%s" % (mname, "\n".join(results))
+        except Exception as e:
+            return "Couldn't run macro: %s" % e
+
+    if name == "list_macros":
+        try:
+            macros = {}
+            for p in ["/Users/AI/.chatbot/macros.json", os.path.expanduser("~/.chatbot/macros.json")]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        macros = json.load(f)
+                    break
+            if not macros:
+                return "No macros saved yet."
+            out = []
+            for mname, steps in macros.items():
+                out.append("%s (%d steps)" % (mname, len(steps)))
+            return "Saved macros:\n" + "\n".join("- " + l for l in out)
+        except Exception as e:
+            return "Couldn't list macros: %s" % e
+
+    if name == "delete_macro":
+        mname = args.get("name", "").strip().lower()
+        if not mname:
+            return "No macro name given."
+        try:
+            use_p = None
+            macros = {}
+            for p in ["/Users/AI/.chatbot/macros.json", os.path.expanduser("~/.chatbot/macros.json")]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        macros = json.load(f)
+                    use_p = p
+                    break
+            if mname not in macros:
+                return "No macro named '%s'." % mname
+            del macros[mname]
+            with open(use_p, "w") as f:
+                json.dump(macros, f, indent=2)
+            return "Macro '%s' deleted." % mname
+        except Exception as e:
+            return "Couldn't delete macro: %s" % e
 
     # Aliases for model guesses
     _aliases = {
