@@ -23,7 +23,7 @@ def _token_path():
 
 TOKEN_PATH = _token_path()
 # Same app registration used by Muse's Outlook connector
-CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Azure CLI public client
+CLIENT_ID = "dfb2f028-c13c-433a-98e2-c0c104318d7d"
 SCOPES = ["Mail.Read", "Mail.Send"]
 AUTHORITY = "https://login.microsoftonline.com/common"
 
