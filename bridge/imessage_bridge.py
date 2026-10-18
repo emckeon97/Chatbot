@@ -262,7 +262,12 @@ Tools:
 - get_stock | {"symbol": "AAPL"} \u2014 Stock price.
 - get_crypto | {"symbol": "BTC"} \u2014 Crypto price.
 - define_word | {"word": "..."} \u2014 Dictionary definition.
-- list_email_accounts | {} \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
+- list_email_accounts | {}
+- lookup_contact | {"name": "Mom"} — Find a contact by name.
+- add_reminder | {"title": "Buy milk"} — Add an Apple Reminder.
+- list_reminders | {} — List open Apple Reminders.
+- system_status | {} — Mac battery and volume.
+- music_control | {"action": "play/pause/next/previous/toggle"} — Control Music.app. \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
 - forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
 
