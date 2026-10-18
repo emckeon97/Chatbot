@@ -1157,8 +1157,11 @@ def try_email_command(text: str):
                 try:
                     emails = s.list_inbox(3)
                     if emails:
-                        lines = [f"  {i+1}. {e[1].split('<')[0].strip() or e[1]}: {e[2]}"
-                                 for i, e in enumerate(emails)]
+                        lines = []
+                        for i, e in enumerate(emails):
+                            ne = _norm_email(e)
+                            frm = ne["from"].split("<")[0].strip() or ne["from"]
+                            lines.append(f"  {i+1}. {frm}: {ne['subject']}")
                         parts.append(f"{n}:\n" + "\n".join(lines))
                     else:
                         parts.append(f"{n}: empty")
