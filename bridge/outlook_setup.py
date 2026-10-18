@@ -2,19 +2,29 @@
 """
 One-time Outlook Mail setup for the iMessage bridge.
 Run: pip install msal && python3 outlook_setup.py
-Opens browser for Microsoft login. Saves token to ~/.chatbot/outlook_token.json.
+Opens browser for Microsoft login. Usage: python3 outlook_setup.py [email] - saves per-account token.
 Saves token to ~/.chatbot/outlook_token.json (auto-refreshes after).
 """
 import json
 import os
+import sys
+import glob
+import re
 
 CLIENT_ID = "dfb2f028-c13c-433a-98e2-c0c104318d7d"
 SCOPES = ["Mail.Read", "Mail.Send"]
 AUTHORITY = "https://login.microsoftonline.com/consumers"
-TOKEN_PATH = os.path.expanduser("~/.chatbot/outlook_token.json")
+def _token_path(account=None):
+    base = os.path.expanduser("~/.chatbot")
+    if account:
+        safe = re.sub(r"[^a-zA-Z0-9@._-]", "_", account)
+        return os.path.join(base, f"outlook_token_{safe}.json")
+    return os.path.join(base, "outlook_token.json")
 
 
 def main():
+    account = sys.argv[1] if len(sys.argv) > 1 else None
+    token_path = _token_path(account)
     try:
         from msal import PublicClientApplication
     except ImportError:
@@ -34,10 +44,10 @@ def main():
         "access_token": result["access_token"],
         "refresh_token": result.get("refresh_token"),
     }
-    os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
-    with open(TOKEN_PATH, "w") as f:
+    os.makedirs(os.path.dirname(token_path), exist_ok=True)
+    with open(token_path, "w") as f:
         json.dump(token, f)
-    print(f"Saved to {TOKEN_PATH}. Outlook Mail is connected.")
+    print(f"Saved to {token_path}. Outlook Mail is connected.")
 
 
 if __name__ == "__main__":
