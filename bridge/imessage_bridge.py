@@ -19,6 +19,8 @@ Also runs an HTTP scheduler on port 11435:
   POST /schedule_text  {"message": "...", "at": unix_timestamp}
 """
 
+import warnings
+warnings.filterwarnings('ignore', message='.*LibreSSL.*')
 import json
 import re
 try:
