@@ -89,25 +89,55 @@ def _has_oauth_token():
     return False
 
 
+def _api_for_token(token_path, path, method="GET", body=None):
+    """Call Graph API with a specific token file."""
+    token = _load_token(token_path)
+    if not token or "refresh_token" not in token:
+        return None
+    access = _refresh(token, token_path)
+    url = f"https://graph.microsoft.com/v1.0/me/{path}"
+    data = json.dumps(body).encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Authorization": f"Bearer {access}",
+                                          "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read().decode()
+        return json.loads(raw) if raw else {}
+
+
 def list_inbox(max_results=5):
-    # Prefer OAuth (Graph API) when token exists — Microsoft disabled IMAP basic auth
-    if not _has_oauth_token():
-        _imap_result = _imap_list(max_results)
-        if _imap_result is not None:
-            # If IMAP only returned errors, fall through to OAuth attempt
-            if not all(isinstance(e, dict) and e.get("id") == "?" for e in _imap_result):
-                return _imap_result
-    """Returns [(id, from, subject, date, snippet)]."""
-    data = _api(f"messages?$top={max_results}&$orderby=receivedDateTime desc"
-                "&$select=id,from,subject,receivedDateTime,bodyPreview")
-    out = []
-    for m in data.get("value", []):
-        frm = m.get("from", {}).get("emailAddress", {})
-        out.append((m["id"], frm.get("name") or frm.get("address", "?"),
-                    m.get("subject", "(no subject)"),
-                    m.get("receivedDateTime", "")[:10],
-                    m.get("bodyPreview", "")[:120]))
-    return out
+    # Prefer OAuth (Graph API) when tokens exist — Microsoft disabled IMAP basic auth
+    token_paths = _token_paths()
+    if token_paths:
+        """Returns [(id, from, subject, date, snippet)] combined from all accounts."""
+        out = []
+        for tp in token_paths:
+            try:
+                data = _api_for_token(tp, f"messages?$top={max_results}&$orderby=receivedDateTime desc"
+                                          "&$select=id,from,subject,receivedDateTime,bodyPreview")
+                if not data:
+                    continue
+                # Extract account email from token filename
+                import re
+                m = re.search(r"outlook_token_(.+?)\.json", os.path.basename(tp))
+                acct = m.group(1) if m else "outlook"
+                for msg in data.get("value", []):
+                    frm = msg.get("from", {}).get("emailAddress", {})
+                    out.append({
+                        "id": f"{acct}:{msg['id']}",
+                        "from": frm.get("name") or frm.get("address", "?"),
+                        "subject": msg.get("subject", "(no subject)"),
+                        "account": acct,
+                    })
+            except Exception:
+                continue
+        return out
+    # Fallback to IMAP
+    _imap_result = _imap_list(max_results)
+    if _imap_result is not None:
+        if not all(isinstance(e, dict) and e.get("id") == "?" for e in _imap_result):
+            return _imap_result
+    return []
 
 
 def read_email(msg_id):
