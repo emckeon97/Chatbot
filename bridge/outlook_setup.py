@@ -5,6 +5,8 @@ Run: pip install msal && python3 outlook_setup.py
 Opens browser for Microsoft login. Usage: python3 outlook_setup.py [email] - saves per-account token.
 Saves token to ~/.chatbot/outlook_token.json (auto-refreshes after).
 """
+import warnings
+warnings.filterwarnings('ignore', message='.*LibreSSL.*')
 import json
 import os
 import sys
