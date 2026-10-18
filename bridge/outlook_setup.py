@@ -2,7 +2,7 @@
 """
 One-time Outlook Mail setup for the iMessage bridge.
 Run: pip install msal && python3 outlook_setup.py
-Uses device-code flow: go to https://microsoft.com/devicelogin and enter the code.
+Opens browser for Microsoft login. Saves token to ~/.chatbot/outlook_token.json.
 Saves token to ~/.chatbot/outlook_token.json (auto-refreshes after).
 """
 import json
@@ -22,20 +22,13 @@ def main():
         return
 
     app = PublicClientApplication(CLIENT_ID, authority=AUTHORITY)
-    flow = app.initiate_device_flow(scopes=SCOPES)
-    if "user_code" not in flow:
-        print("Device flow not supported:", flow.get("error_description", flow))
-        return
-    print(flow["message"])
-    result = app.acquire_token_by_device_flow(flow)
+    # Interactive browser login - simplest method
+    print("Opening browser for Microsoft login...")
+    result = app.acquire_token_interactive(scopes=SCOPES)
     if "access_token" not in result:
         print("Failed:", result.get("error_description", result))
         return
-    token = {
-        "client_id": CLIENT_ID,
-        "access_token": result["access_token"],
-        "refresh_token": result.get("refresh_token"),
-    }
+    print("Login successful!")
     os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
     with open(TOKEN_PATH, "w") as f:
         json.dump(token, f)
