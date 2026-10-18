@@ -73,10 +73,22 @@ def _api(path, method="GET", body=None):
         return json.loads(raw) if raw else {}
 
 
+def _has_oauth_token():
+    import os
+    for p in ["/Users/AI/.chatbot/outlook_token.json", os.path.expanduser("~/.chatbot/outlook_token.json")]:
+        if os.path.exists(p):
+            return True
+    return False
+
+
 def list_inbox(max_results=5):
-    _imap_result = _imap_list(max_results)
-    if _imap_result is not None:
-        return _imap_result
+    # Prefer OAuth (Graph API) when token exists — Microsoft disabled IMAP basic auth
+    if not _has_oauth_token():
+        _imap_result = _imap_list(max_results)
+        if _imap_result is not None:
+            # If IMAP only returned errors, fall through to OAuth attempt
+            if not all(isinstance(e, dict) and e.get("id") == "?" for e in _imap_result):
+                return _imap_result
     """Returns [(id, from, subject, date, snippet)]."""
     data = _api(f"messages?$top={max_results}&$orderby=receivedDateTime desc"
                 "&$select=id,from,subject,receivedDateTime,bodyPreview")
