@@ -29,6 +29,11 @@ def main():
         print("Failed:", result.get("error_description", result))
         return
     print("Login successful!")
+    token = {
+        "client_id": CLIENT_ID,
+        "access_token": result["access_token"],
+        "refresh_token": result.get("refresh_token"),
+    }
     os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
     with open(TOKEN_PATH, "w") as f:
         json.dump(token, f)
