@@ -267,7 +267,13 @@ Tools:
 - add_reminder | {"title": "Buy milk"} — Add an Apple Reminder.
 - list_reminders | {} — List open Apple Reminders.
 - system_status | {} — Mac battery and volume.
-- music_control | {"action": "play/pause/next/previous/toggle"} — Control Music.app. \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
+- music_control | {"action": "play/pause/next/previous/toggle"}
+- set_volume | {"level": 50} — Set Mac volume 0-100.
+- lock_mac | {} — Lock the Mac screen.
+- sleep_display | {} — Put the display to sleep.
+- open_app | {"app": "Safari"} — Open an app on the Mac.
+- take_screenshot | {} — Take a Mac screenshot.
+- get_clipboard | {} — Read the Mac clipboard. — Control Music.app. \u2014 List all configured email providers and connection status. Use for "what accounts" questions, NOT inbox contents.
 - forget_fact | {"query": "..."} \u2014 Remove matching facts from permanent memory. \u2014 Cancel a scheduled text by its number."""
 
 
@@ -918,6 +924,73 @@ def _execute_tool_inner(name, args):
             return msg
         except Exception as e:
             return "Couldn't control music: %s" % e
+
+
+    if name == "set_volume":
+        import subprocess as sp
+        try:
+            vol = int(args.get("level", 50))
+            vol = max(0, min(100, vol))
+            sp.run(["osascript", "-e", "set volume output volume %d" % vol],
+                   capture_output=True, timeout=10)
+            return "Volume set to %d%%." % vol
+        except Exception as e:
+            return "Couldn't set volume: %s" % e
+
+    if name == "lock_mac":
+        import subprocess as sp
+        try:
+            sp.run(["osascript", "-e",
+                    'tell application "System Events" to keystroke "q" using {control down, command down}'],
+                   capture_output=True, timeout=10)
+            return "Mac locked."
+        except Exception as e:
+            return "Couldn't lock: %s" % e
+
+    if name == "sleep_display":
+        import subprocess as sp
+        try:
+            sp.run(["pmset", "displaysleepnow"], capture_output=True, timeout=10)
+            return "Display sleeping."
+        except Exception as e:
+            return "Couldn't sleep display: %s" % e
+
+    if name == "open_app":
+        import subprocess as sp
+        app = args.get("app", "").strip()
+        if not app:
+            return "No app name given."
+        a = app.replace('"', '')
+        try:
+            sp.run(["open", "-a", a], capture_output=True, timeout=15)
+            return "Opening %s." % app
+        except Exception as e:
+            return "Couldn't open %s: %s" % (app, e)
+
+    if name == "take_screenshot":
+        import subprocess as sp, time
+        try:
+            ts = int(time.time())
+            p = "/tmp/bridge_screenshot_%d.png" % ts
+            sp.run(["screencapture", "-x", p], capture_output=True, timeout=15)
+            if os.path.exists(p):
+                return "Screenshot saved to %s." % p
+            return "Screenshot failed."
+        except Exception as e:
+            return "Couldn't take screenshot: %s" % e
+
+    if name == "get_clipboard":
+        import subprocess as sp
+        try:
+            r = sp.run(["pbpaste"], capture_output=True, text=True, timeout=10)
+            clip = r.stdout.strip()
+            if not clip:
+                return "Clipboard is empty."
+            if len(clip) > 500:
+                clip = clip[:500] + "..."
+            return "Clipboard:\n%s" % clip
+        except Exception as e:
+            return "Couldn't read clipboard: %s" % e
 
     # Aliases for model guesses
     _aliases = {
