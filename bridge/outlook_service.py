@@ -6,6 +6,8 @@ Setup: python3 outlook_setup.py (device-code flow, sign in at microsoft.com/devi
   Uses the Outlook client ID already connected to Muse. Token auto-refreshes.
 Then: list_inbox(), read_email(), send_email() just work.
 """
+import warnings
+warnings.filterwarnings('ignore', message='.*LibreSSL.*')
 import json
 import os
 import urllib.request
