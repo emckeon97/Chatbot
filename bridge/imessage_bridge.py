@@ -68,6 +68,8 @@ FACTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "longterm_
 MESSAGE_DB = os.path.expanduser("~/Library/Messages/chat.db")
 SCHEDULE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule.json")
 TASK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "delegated_tasks.json")
+AGENT_TASKS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_tasks.json")
+EXEC_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "execution_log.jsonl")
 SCHEDULER_PORT = 11435
 
 # ---------- message reading (database) ----------
@@ -235,6 +237,8 @@ TOOL_DESCRIPTIONS = """You have these tools. To use one, output a line EXACTLY l
 [TOOL: tool_name | {"arg": "value"}]
 You can call multiple tools, one per line. After I return results, answer the user.
 
+SCHEDULED TASKS: When he asks for something to happen later or regularly ("at 8am", "every morning", "check X and tell me"), use create_task with an INSTRUCTION describing what to do when it fires. You will run that instruction fresh at fire time with full tool access and text him the result yourself \u2014 that proactive text is wanted, he asked for it. NEVER use schedule_text for a job that needs doing; schedule_text only replays pre-written reminder text verbatim. When he asks whether a task ran, ALWAYS call task_status first \u2014 the execution log is the only truth; never answer from memory.
+
 IMPORTANT: Always try YOUR OWN tools first. Only use delegate_task when the task is genuinely impossible for you \u2014 things needing a web browser, logging into websites, or accounts you don\u2019t have access to. Email, GitHub, calculations, and plans are YOUR job. Never delegate those.
 
 Tools:
@@ -252,6 +256,11 @@ Tools:
 - schedule_text | {"message": "...", "when": "in 30 minutes / tomorrow at 9am", "recurring": "none/daily/weekly"} \u2014 Schedule a text to him. Describe when naturally.
 - list_scheduled | {} \u2014 Show all scheduled texts.
 - cancel_scheduled | {"index": 0} \u2014 Cancel a scheduled text by its number.
+- create_task | {"name": "Morning email briefing", "instruction": "Check all my email accounts and send me only what is vital", "when": "8am", "recurring": "daily"} \u2014 Create a real agent task that runs the instruction at fire time and texts him the result. recurring: none/daily/weekdays/weekly.
+- list_tasks | {} \u2014 List agent tasks with next run time and last status.
+- delete_task | {"index": 0} \u2014 Delete an agent task by its number.
+- task_status | {} \u2014 Show the execution log: what actually ran, when, and whether it worked.
+- email_briefing | {} \u2014 One consolidated digest of Gmail, Outlook and iCloud: only vital mail (security, banking, jobs, legal, deadlines), each with sender, subject and why it matters. Provider failures are reported, never hidden.
 - remember_fact | {"fact": "..."} \u2014 Save something to permanent memory. Never forgets.
 - recall_facts | {} \u2014 List everything in permanent memory.
 - add_calendar_event | {"title": "...", "when": "tomorrow at 3pm", "duration_min": 60} \u2014 Add event to macOS Calendar.
@@ -1142,6 +1151,16 @@ def _execute_tool_inner(name, args):
         return _bridge_list_scheduled()
     if name == "cancel_scheduled":
         return _bridge_cancel_scheduled(int(args.get("index", -1)))
+    if name == "create_task":
+        return _bridge_create_task(args.get("name", ""), args.get("instruction", ""), args.get("when", ""), args.get("recurring", "none"))
+    if name == "list_tasks":
+        return _bridge_list_tasks()
+    if name == "delete_task":
+        return _bridge_delete_task(int(args.get("index", -1)))
+    if name == "task_status":
+        return _bridge_task_status()
+    if name == "email_briefing":
+        return _bridge_email_briefing()
     if not GITHUB_AVAILABLE:
         return "GitHub not available on bridge."
     if name == "github_list_repos":
@@ -1160,6 +1179,8 @@ def _execute_tool_inner(name, args):
 def execute_tool(name, args):
     """Wrapper: never hang, always respond in plain English on failure."""
     import traceback
+    if _CAPTURE_ACTIVE:
+        _RUN_TOOL_CAPTURE.append(name)
     try:
         return _execute_tool_inner(name, args)
     except Exception as e:
@@ -1302,6 +1323,315 @@ def save_delegated_tasks(tasks):
         print("could not save tasks:", e)
 
 
+
+
+# ---------- agent tasks: scheduled jobs executed fresh at fire time ----------
+# A task stores an INSTRUCTION, not a pre-written message. When it fires, the
+# instruction runs through the same model+tools pipeline as a live text, and
+# the result is texted to Elijah on its own. Every run is written to the
+# execution log, so "did it run?" always has a provable answer.
+
+_RUN_TOOL_CAPTURE = []
+_CAPTURE_ACTIVE = False
+
+VITAL_TERMS = (
+    "security alert", "unusual activity", "suspicious activity", "sign-in",
+    "signin", "login attempt", "password", "verification", "verify your",
+    "one-time code", "one time code", "passcode", "access code",
+    "account locked", "account suspended", "account disabled",
+    "payment failed", "payment declined", "payment overdue", "past due",
+    "overdraft", "fraud", "chargeback", "bank notice", "tax notice",
+    "interview", "job offer", "application update", "recruiter",
+    "background check", "onboarding", "benefits enrollment",
+    "court", "legal notice", "summons", "lease", "eviction",
+    "medical", "doctor", "appointment reminder", "prescription",
+    "action required", "response required", "important account",
+)
+STRONG_TERMS = (
+    "security", "password", "verification", "verify", "code", "fraud",
+    "overdraft", "payment", "interview", "court", "legal", "eviction",
+    "locked", "suspended", "account",
+)
+PROMO_TERMS = (
+    "unsubscribe", "newsletter", "weekly digest", "daily digest", "sale",
+    "deal", "promo", "promotion", "coupon", "clearance", "black friday",
+    "cyber monday", "marketing", "sponsored",
+)
+
+
+def load_agent_tasks() -> list:
+    if not os.path.exists(AGENT_TASKS_FILE):
+        return []
+    try:
+        with open(AGENT_TASKS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_agent_tasks(tasks: list) -> None:
+    try:
+        with open(AGENT_TASKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(tasks, f, ensure_ascii=False, indent=1)
+    except Exception as e:
+        print("could not save agent tasks:", e)
+
+
+def log_execution(kind, name, ok, detail="", tools=None):
+    try:
+        entry = {"ts": datetime.now().isoformat(timespec="seconds"),
+                 "kind": kind, "name": name, "ok": bool(ok),
+                 "tools": tools or [], "detail": str(detail)[:300]}
+        with open(EXEC_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _next_daily(hour, minute):
+    now = datetime.now()
+    cand = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if cand.timestamp() <= time.time():
+        cand += timedelta(days=1)
+    return cand.timestamp()
+
+
+def _task_next_fire(task, after_ts):
+    rec = task.get("recurring", "none")
+    at = task.get("at", 0)
+    if rec == "daily":
+        nxt = at + 86400
+        while nxt <= after_ts:
+            nxt += 86400
+        return nxt
+    if rec == "weekly":
+        nxt = at + 7 * 86400
+        while nxt <= after_ts:
+            nxt += 7 * 86400
+        return nxt
+    if rec == "weekdays":
+        nxt = at + 86400
+        while nxt <= after_ts or datetime.fromtimestamp(nxt).weekday() >= 5:
+            nxt += 86400
+        return nxt
+    return None
+
+
+def seed_default_tasks():
+    if os.path.exists(AGENT_TASKS_FILE):
+        return
+    tasks = [{
+        "id": int(time.time()),
+        "name": "Morning email briefing",
+        "instruction": "Call the email_briefing tool and send me its full result word for word. It checks Gmail, Outlook and iCloud and flags only what is vital.",
+        "at": _next_daily(8, 0),
+        "recurring": "daily",
+        "enabled": True,
+        "last_run": None,
+        "last_status": None,
+    }]
+    save_agent_tasks(tasks)
+    print("seeded default task: Morning email briefing (daily 8:00 AM)")
+
+
+def _vital_reason(frm, subj):
+    hay = (str(frm) + " " + str(subj)).lower()
+    hits = [t for t in VITAL_TERMS if t in hay]
+    if not hits:
+        return None
+    if any(t in hay for t in PROMO_TERMS) and not any(s in hay for s in STRONG_TERMS):
+        return None
+    return hits[0]
+
+
+def _bridge_email_briefing(count=15):
+    lines = ["Email briefing — %s" % datetime.now().strftime("%A %b %d, %I:%M %p")]
+    any_vital = False
+    for p in ("gmail", "outlook", "icloud"):
+        name, svc = _email_svc(p)
+        if not svc:
+            lines.append("\n%s: NOT CONNECTED — the module did not load. Run its setup." % name)
+            continue
+        try:
+            emails = svc.list_inbox(count) or []
+        except Exception as ex:
+            lines.append("\n%s: COULD NOT CHECK — %s. The connection needs attention." % (name, ex))
+            continue
+        vital, other = [], 0
+        for e in emails:
+            ne = _norm_email(e)
+            reason = _vital_reason(ne.get("from", ""), ne.get("subject", ""))
+            if reason:
+                vital.append((ne, reason))
+            else:
+                other += 1
+        if vital:
+            any_vital = True
+            lines.append("\n%s — %d that need you:" % (name, len(vital)))
+            for ne, reason in vital:
+                sender = re.sub(r"\s*<[^>]+>", "", str(ne.get("from", ""))).strip() or ne.get("from", "?")
+                lines.append("- %s: %s (flagged: %s)" % (sender, ne.get("subject", "(no subject)"), reason))
+        else:
+            lines.append("\n%s: nothing vital." % name)
+        if other:
+            lines.append("  (+%d other messages that do not need you.)" % other)
+    if not any_vital:
+        lines.append("\nNothing vital in any inbox, sir.")
+    return "\n".join(lines)
+
+
+def _bridge_create_task(name, instruction, when_str, recurring="none"):
+    if not instruction:
+        return "I need to know what the task should do, sir."
+    recurring = (recurring or "none").lower().strip()
+    if recurring not in ("none", "daily", "weekdays", "weekly"):
+        recurring = "none"
+    at = None
+    if recurring in ("daily", "weekdays", "weekly"):
+        s = (when_str or "").lower()
+        m = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", s)
+        if m:
+            hour = int(m.group(1))
+            minute = int(m.group(2) or 0)
+            if m.group(3) == "pm" and hour < 12:
+                hour += 12
+            if m.group(3) == "am" and hour == 12:
+                hour = 0
+            at = _next_daily(hour, minute)
+        else:
+            m2 = re.search(r"(\d{1,2}):(\d{2})", s)
+            if m2:
+                at = _next_daily(int(m2.group(1)), int(m2.group(2)))
+    if at is None:
+        at = _parse_when(when_str or "")
+    if at is None:
+        return "I could not work out when to run that, sir. Try 'tomorrow at 8am' or 'every day at 8am'."
+    tasks = load_agent_tasks()
+    task = {"id": int(time.time()), "name": name or instruction[:40],
+            "instruction": instruction, "at": at, "recurring": recurring,
+            "enabled": True, "last_run": None, "last_status": None}
+    tasks.append(task)
+    save_agent_tasks(tasks)
+    when_txt = datetime.fromtimestamp(at).strftime("%a %b %d, %I:%M %p")
+    rec_txt = "" if recurring == "none" else " (%s)" % recurring
+    log_execution("task_created", task["name"], True, "first run %s%s" % (when_txt, rec_txt))
+    return "Task set, sir: '%s' — first run %s%s. I will text you the result when it fires." % (task["name"], when_txt, rec_txt)
+
+
+def _bridge_list_tasks():
+    tasks = load_agent_tasks()
+    if not tasks:
+        return "No agent tasks set, sir."
+    out = []
+    for i, t in enumerate(tasks):
+        nxt = datetime.fromtimestamp(t.get("at", 0)).strftime("%a %b %d, %I:%M %p")
+        state = "on" if t.get("enabled", True) else "off/done"
+        last = t.get("last_status") or "not run yet"
+        out.append("%d. \"%s\" — %s, next: %s [%s] (last: %s)" % (
+            i, t.get("name", "?"), t.get("recurring", "none"), nxt, state, last))
+    return "\n".join(out)
+
+
+def _bridge_delete_task(index):
+    tasks = load_agent_tasks()
+    if 0 <= index < len(tasks):
+        gone = tasks.pop(index)
+        save_agent_tasks(tasks)
+        return "Deleted task '%s', sir." % gone.get("name", "?")
+    return "No task at number %d, sir." % index
+
+
+def _bridge_task_status():
+    if not os.path.exists(EXEC_LOG_FILE):
+        return "No executions logged yet, sir — nothing has run."
+    try:
+        with open(EXEC_LOG_FILE, "r", encoding="utf-8") as f:
+            lines = [l for l in f.read().splitlines() if l.strip()]
+    except Exception as e:
+        return "Could not read the execution log: %s" % e
+    out = []
+    for raw in lines[-8:]:
+        try:
+            e = json.loads(raw)
+        except Exception:
+            continue
+        when = e.get("ts", "")[5:16].replace("T", " ")
+        tools = ", ".join(e.get("tools", [])) or "no tools"
+        out.append("- %s %s \"%s\": %s (%s)%s" % (
+            when, e.get("kind", "?"), e.get("name", "?"),
+            "OK" if e.get("ok") else "FAILED", tools,
+            (" — " + e["detail"][:120]) if e.get("detail") else ""))
+    return "Execution log (latest last):\n" + "\n".join(out) if out else "Log is empty, sir."
+
+
+def _run_agent_task(task):
+    global _CAPTURE_ACTIVE
+    name = task.get("name", "task")
+    instruction = task.get("instruction", "")
+    del _RUN_TOOL_CAPTURE[:]
+    _CAPTURE_ACTIVE = True
+    try:
+        note = ("[SCHEDULED TASK — RUNNING NOW. Elijah set this up earlier and is not watching. "
+                "Do the job completely with your tools, then write the exact message he should receive. "
+                "He asked for this proactively. If part of it fails, say plainly what failed and why.]\n\nTask: " + instruction)
+        reply = ask_with_tools([{"role": "user", "content": note}])
+        if not reply:
+            raise RuntimeError("the model returned nothing")
+        send(reply)
+        task["last_status"] = "ok %s" % datetime.now().strftime("%b %d %I:%M %p")
+        log_execution("agent_task", name, True, reply[:200], list(_RUN_TOOL_CAPTURE))
+        print("agent task ran:", name)
+    except Exception as e:
+        task["last_status"] = "FAILED %s: %s" % (datetime.now().strftime("%b %d %I:%M %p"), e)
+        sent = False
+        low = instruction.lower()
+        if "email" in low or "inbox" in low:
+            try:
+                send(_bridge_email_briefing())
+                sent = True
+                log_execution("agent_task", name, True,
+                              "model run failed (%s); sent the raw briefing instead" % e,
+                              ["email_briefing"])
+            except Exception:
+                pass
+        if not sent:
+            try:
+                send("Task '%s' failed, sir: %s" % (name, e))
+            except Exception:
+                pass
+            log_execution("agent_task", name, False, str(e), list(_RUN_TOOL_CAPTURE))
+        print("agent task failed:", name, e)
+    finally:
+        _CAPTURE_ACTIVE = False
+
+
+def check_agent_tasks() -> None:
+    """Fire any due agent tasks. Next fire time is saved BEFORE running,
+    so a crash mid-run can never double-fire a task."""
+    tasks = load_agent_tasks()
+    if not tasks:
+        return
+    now = time.time()
+    changed = False
+    for task in tasks:
+        if not task.get("enabled", True):
+            continue
+        if task.get("at", 0) > now:
+            continue
+        nxt = _task_next_fire(task, now)
+        if nxt:
+            task["at"] = nxt
+        else:
+            task["enabled"] = False
+        task["last_run"] = datetime.now().isoformat(timespec="seconds")
+        changed = True
+        save_agent_tasks(tasks)
+        _run_agent_task(task)
+    if changed:
+        save_agent_tasks(tasks)
+
+
 # ---------- scheduled texts ----------
 
 def load_schedule() -> list:
@@ -1355,6 +1685,7 @@ def check_schedule() -> None:
             try:
                 send(item.get("message", ""))
                 print("sent scheduled text:", item.get("message", "")[:50])
+                log_execution("scheduled_text", item.get("message", "")[:60], True)
                 changed = True
                 # Reschedule if recurring
                 nxt = next_occurrence(item)
@@ -1363,6 +1694,7 @@ def check_schedule() -> None:
                     remaining.append(item)
             except Exception as e:
                 print("scheduled send failed:", e)
+                log_execution("scheduled_text", item.get("message", "")[:60], False, str(e))
                 remaining.append(item)
         else:
             remaining.append(item)
@@ -1618,6 +1950,7 @@ def main() -> None:
 
     print("Watching chat:", CHAT_ID)
     start_scheduler_server()
+    seed_default_tasks()
     print("Ctrl-C to stop.")
 
     # Anything already in the chat before startup stays unanswered.
@@ -1686,6 +2019,7 @@ def main() -> None:
         except Exception as error:
             print("error:", error)
         check_schedule()
+        check_agent_tasks()
         time.sleep(POLL_SECONDS)
 
 
