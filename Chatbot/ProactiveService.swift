@@ -94,26 +94,30 @@ final class ProactiveService: ObservableObject {
     /// Returns (action, message, date, recurring) if matched, nil otherwise.
     func parseScheduleRequest(_ input: String) -> (action: ScheduleAction, message: String, date: Date, recurring: String?)? {
         let lower = input.lowercased()
-
-        // Determine action
         let isText = lower.contains("text me")
         let isCall = lower.contains("call me")
         let isRemind = lower.contains("remind me") || lower.contains("notify me")
-        guard isText || isCall || isRemind else { return nil }
-        let action: ScheduleAction
-        if isText { action = .text }
-        else if isCall { action = .call }
-        else { action = .notify }
+        let mentionsEmail = ["email", "mail", "inbox", "gmail", "outlook", "icloud"].contains { lower.contains($0) }
 
-        // Detect recurring: "every day", "every morning", "daily", "every week", "weekly"
         var recurring: String?
         if lower.contains("every day") || lower.contains("daily") || lower.contains("every morning") {
             recurring = "daily"
         } else if lower.contains("every week") || lower.contains("weekly") {
             recurring = "weekly"
         }
+        let hasScheduledTime = recurring != nil || lower.contains("tomorrow") ||
+            extractNumber(after: "in", before: "minute", in: lower) != nil ||
+            extractNumber(after: "in", before: "hour", in: lower) != nil ||
+            parseAtTime(in: lower) != nil
+        let isScheduledEmail = mentionsEmail && hasScheduledTime
+        guard isText || isCall || isRemind || isScheduledEmail else { return nil }
 
-        // Parse time: "in X minutes", "in X hours", "at 9am", "tomorrow at 9am", "every morning"
+        let action: ScheduleAction
+        if isScheduledEmail { action = .task }
+        else if isText { action = .text }
+        else if isCall { action = .call }
+        else { action = .notify }
+
         var date: Date?
         if let minutes = extractNumber(after: "in", before: "minute", in: lower) {
             date = Date().addingTimeInterval(Double(minutes) * 60)
@@ -122,7 +126,6 @@ final class ProactiveService: ObservableObject {
         } else if let timeDate = parseAtTime(in: lower) {
             date = timeDate
         } else if lower.contains("every morning") {
-            // Default to 8am
             var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
             components.hour = 8
             components.minute = 0
@@ -132,9 +135,10 @@ final class ProactiveService: ObservableObject {
         }
         guard let targetDate = date else { return nil }
 
-        // Extract message: after ":" or after the time expression
         var message = ""
-        if let colonRange = input.range(of: ":") {
+        if isScheduledEmail {
+            message = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let colonRange = input.range(of: ":") {
             message = String(input[colonRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if message.isEmpty {
@@ -192,7 +196,7 @@ final class ProactiveService: ObservableObject {
 }
 
 enum ScheduleAction {
-    case text, call, notify
+    case text, call, notify, task
 }
 
 enum ProactiveError: Error, LocalizedError {
