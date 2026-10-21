@@ -372,6 +372,8 @@ def _parse_when(when_str):
     import re as _re
     s = when_str.lower().strip()
     now = time.time()
+    if s == "tomorrow":
+        return (datetime.now(_local_zone()) + timedelta(days=1)).timestamp()
     m = _re.match(r"in\s+(\d+)\s*(minute|min|hour|hr)", s)
     if m:
         n = int(m.group(1))
