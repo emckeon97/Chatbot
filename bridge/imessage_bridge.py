@@ -368,7 +368,7 @@ def _bridge_send_email(provider, to, subject, body):
 
 
 def _parse_when(when_str):
-    """Parse natural time like 'in 30 minutes', 'tomorrow at 9am' into a timestamp."""
+    """Parse relative delays and local wall-clock schedule times."""
     import re as _re
     s = when_str.lower().strip()
     now = time.time()
@@ -405,8 +405,9 @@ def _parse_when(when_str):
         else:
             dt = dt.replace(hour=9, minute=0, second=0, microsecond=0)
         return dt.timestamp()
-    m = _re.search(r"(tomorrow\s+)?at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", s)
+    m = _re.search(r"(?:(today|tomorrow)\s+)?at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)", s)
     if m:
+        day = m.group(1)
         hour = int(m.group(2))
         minute = int(m.group(3) or 0)
         ampm = m.group(4)
@@ -414,14 +415,13 @@ def _parse_when(when_str):
             hour += 12
         if ampm == "am" and hour == 12:
             hour = 0
-        dt = datetime.now()
-        if m.group(1):
-            dt = dt + timedelta(days=1)
-        dt = dt.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        ts = dt.timestamp()
-        if ts < now:
-            ts += 86400
-        return ts
+        local_now = datetime.now(_local_zone())
+        dt = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if day == "tomorrow":
+            dt += timedelta(days=1)
+        elif day is None and dt < local_now:
+            dt += timedelta(days=1)
+        return dt.timestamp()
     return None
 
 
