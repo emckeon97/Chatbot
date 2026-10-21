@@ -7,7 +7,7 @@ import UserNotifications
 final class ProactiveService: ObservableObject {
     static let shared = ProactiveService()
 
-    private var schedulerURL: URL? {
+    private func schedulerURL(path: String) -> URL? {
         let settings = UserDefaults.standard
         var server = (settings.string(forKey: "serverURL") ?? "http://192.168.0.102:11434")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -18,7 +18,24 @@ final class ProactiveService: ObservableObject {
         guard let ollamaURL = URL(string: server),
               let host = ollamaURL.host else { return nil }
         let scheme = ollamaURL.scheme ?? "http"
-        return URL(string: "\(scheme)://\(host):11435/schedule_text")
+        return URL(string: "\(scheme)://\(host):11435/\(path)")
+    }
+
+    private func post(_ payload: [String: Any], path: String) async throws {
+        guard let url = schedulerURL(path: path) else { throw ProactiveError.noScheduler }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        request.timeoutInterval = 15
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ProactiveError.scheduleFailed(json?["error"] as? String ?? "Scheduler returned an error.")
+        }
+        guard json?["ok"] as? Bool == true else {
+            throw ProactiveError.scheduleFailed(json?["error"] as? String ?? "Scheduler did not confirm the request.")
+        }
     }
 
     private init() {
@@ -34,26 +51,19 @@ final class ProactiveService: ObservableObject {
     /// Schedule a text to be sent by the bridge at the given date.
     /// - Parameter recurring: "daily", "weekly", or nil for one-time.
     func scheduleText(message: String, at date: Date, recurring: String? = nil) async throws {
-        guard let url = schedulerURL else { throw ProactiveError.noScheduler }
-        var payload: [String: Any] = [
-            "message": message,
-            "at": date.timeIntervalSince1970
-        ]
+        var payload: [String: Any] = ["message": message, "at": date.timeIntervalSince1970]
         if let recurring { payload["recurring"] = recurring }
-        let body = try JSONSerialization.data(withJSONObject: payload)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw ProactiveError.scheduleFailed
-        }
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           (json["ok"] as? Bool) != true {
-            throw ProactiveError.scheduleFailed
-        }
+        try await post(payload, path: "schedule_text")
+    }
+
+    /// Schedule an instruction to run with the bridge's tools at the requested time.
+    func scheduleTask(instruction: String, at date: Date, recurring: String? = nil) async throws {
+        try await post([
+            "name": "Scheduled email check",
+            "instruction": instruction,
+            "at": date.timeIntervalSince1970,
+            "recurring": recurring ?? "none"
+        ], path: "create_task")
     }
 
     // MARK: - Scheduled calls (local notification)
@@ -186,11 +196,11 @@ enum ScheduleAction {
 }
 
 enum ProactiveError: Error, LocalizedError {
-    case noScheduler, scheduleFailed
+    case noScheduler, scheduleFailed(String)
     var errorDescription: String? {
         switch self {
         case .noScheduler: return "Could not reach the scheduler."
-        case .scheduleFailed: return "Failed to schedule."
+        case .scheduleFailed(let reason): return "Failed to schedule: \(reason)"
         }
     }
 }
