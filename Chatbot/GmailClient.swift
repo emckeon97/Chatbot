@@ -18,6 +18,10 @@ final class GmailClient {
         guard low.contains("gmail") || low.contains("email") || low.contains("mail") || low.contains("inbox") else { return nil }
         // Don't hijack outlook/icloud requests
         if low.contains("outlook") || low.contains("icloud") { return nil }
+        // Scheduled inbox requests belong to the task scheduler, not an immediate check.
+        if low.range(of: #"\b(?:tomorrow|daily|weekdays|weekly|every\s+(?:day|morning|week|weekday)|in\s+\d+\s+(?:minutes?|hours?|days?)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm))\b"#, options: .regularExpression) != nil {
+            return nil
+        }
         if low.contains("check") || low.contains("new") || low.contains("latest") || low.contains("inbox") || low.contains("unread") {
             return ("list", "")
         }
@@ -45,33 +49,39 @@ final class GmailClient {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
         }
-        let (data, _) = try await URLSession.shared.data(for: req)
-        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw GmailClientError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else { throw GmailClientError.requestFailed(http.statusCode) }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GmailClientError.invalidResponse
+        }
+        return json
     }
 
-    func listInbox(_ max: Int = 5) async -> [Email] {
-        do {
-            let list = try await api("messages?maxResults=\(max)&q=in:inbox")
-            guard let items = list["messages"] as? [[String: Any]] else { return [] }
-            var out: [Email] = []
-            for item in items.prefix(max) {
-                guard let id = item["id"] as? String else { continue }
-                let msg = try await api("messages/\(id)?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date")
-                let payload = msg["payload"] as? [String: Any]
-                let headers = (payload?["headers"] as? [[String: Any]]) ?? []
-                var from = "?", subject = "(no subject)", date = ""
-                for h in headers {
-                    let n = (h["name"] as? String ?? "").lowercased()
-                    let v = h["value"] as? String ?? ""
-                    if n == "from" { from = v }
-                    else if n == "subject" { subject = v }
-                    else if n == "date" { date = v }
-                }
-                out.append(Email(id: id, from: from, subject: subject, date: date,
-                                 snippet: msg["snippet"] as? String ?? ""))
+    func listInbox(_ max: Int = 5) async throws -> [Email] {
+        let list = try await api("messages?maxResults=\(max)&q=in:inbox")
+        guard let items = list["messages"] as? [[String: Any]] else {
+            if (list["resultSizeEstimate"] as? Int) == 0 { return [] }
+            throw GmailClientError.invalidResponse
+        }
+        var out: [Email] = []
+        for item in items.prefix(max) {
+            guard let id = item["id"] as? String else { continue }
+            let msg = try await api("messages/\(id)?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date")
+            let payload = msg["payload"] as? [String: Any]
+            let headers = (payload?["headers"] as? [[String: Any]]) ?? []
+            var from = "?", subject = "(no subject)", date = ""
+            for h in headers {
+                let n = (h["name"] as? String ?? "").lowercased()
+                let v = h["value"] as? String ?? ""
+                if n == "from" { from = v }
+                else if n == "subject" { subject = v }
+                else if n == "date" { date = v }
             }
-            return out
-        } catch { return [] }
+            out.append(Email(id: id, from: from, subject: subject, date: date,
+                             snippet: msg["snippet"] as? String ?? ""))
+        }
+        return out
     }
 
     func readBody(id: String) async -> String? {
@@ -109,6 +119,16 @@ final class GmailClient {
     }
 }
 
-enum GmailClientError: Error {
+enum GmailClientError: Error, LocalizedError {
     case notSignedIn
+    case requestFailed(Int)
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .notSignedIn: return "Gmail not connected. Connect in Settings first."
+        case .requestFailed(let status): return "Gmail returned HTTP \(status)."
+        case .invalidResponse: return "Gmail returned an invalid response."
+        }
+    }
 }
