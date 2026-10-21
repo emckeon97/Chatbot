@@ -111,36 +111,39 @@ def list_inbox(max_results=5):
     # Prefer OAuth (Graph API) when tokens exist — Microsoft disabled IMAP basic auth
     token_paths = _token_paths()
     if token_paths:
-        """Returns [(id, from, subject, date, snippet)] combined from all accounts."""
         out = []
+        errors = []
         for tp in token_paths:
             try:
                 data = _api_for_token(tp, f"messages?$top={max_results}&$orderby=receivedDateTime desc"
                                           "&$select=id,from,subject,receivedDateTime,bodyPreview")
-                if not data:
-                    continue
-                # Extract account email from token filename
+                if not isinstance(data, dict) or "value" not in data:
+                    raise RuntimeError("Outlook returned an invalid response")
                 import re
-                m = re.search(r"outlook_token_(.+?)\.json", os.path.basename(tp))
-                acct = m.group(1) if m else "outlook"
+                match = re.search(r"outlook_token_(.+?)\.json", os.path.basename(tp))
+                account = match.group(1) if match else os.path.basename(tp)
                 for msg in data.get("value", []):
                     frm = msg.get("from", {}).get("emailAddress", {})
                     out.append({
-                        "id": f"{acct}:{msg['id']}",
+                        "id": f"{account}:{msg['id']}",
                         "from": frm.get("name") or frm.get("address", "?"),
                         "subject": msg.get("subject", "(no subject)"),
-                        "account": acct,
+                        "account": account,
                     })
-            except Exception:
-                continue
+            except Exception as e:
+                errors.append("%s: %s" % (os.path.basename(tp), e))
+        if errors:
+            raise RuntimeError("Could not check Outlook accounts: " + "; ".join(errors))
         return out
-    # Fallback to IMAP
-    _imap_result = _imap_list(max_results)
-    if _imap_result is not None:
-        if not all(isinstance(e, dict) and e.get("id") == "?" for e in _imap_result):
-            return _imap_result
-    return []
 
+    imap_result = _imap_list(max_results)
+    if imap_result is None:
+        raise RuntimeError("Outlook not connected. Run: python3 outlook_setup.py")
+    failures = [item.get("subject", "IMAP error") for item in imap_result
+                if isinstance(item, dict) and item.get("id") == "?"]
+    if failures:
+        raise RuntimeError("Outlook IMAP check failed: " + "; ".join(failures))
+    return imap_result
 
 def read_email(msg_id):
     _imap_result = _imap_read(msg_id)
