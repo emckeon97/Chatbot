@@ -45,6 +45,8 @@ except ImportError:
     GITHUB_AVAILABLE = False
 import os
 import sqlite3
+import tempfile
+import math
 import subprocess
 import sys
 import time
@@ -52,6 +54,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # ---------- settings ----------
 USER_HANDLE = "7042800968"  # your cell; incoming texts from this number are answered
@@ -238,6 +241,7 @@ TOOL_DESCRIPTIONS = """You have these tools. To use one, output a line EXACTLY l
 You can call multiple tools, one per line. After I return results, answer the user.
 
 SCHEDULED TASKS: When he asks for something to happen later or regularly ("at 8am", "every morning", "check X and tell me"), use create_task with an INSTRUCTION describing what to do when it fires. You will run that instruction fresh at fire time with full tool access and text him the result yourself \u2014 that proactive text is wanted, he asked for it. NEVER use schedule_text for a job that needs doing; schedule_text only replays pre-written reminder text verbatim. When he asks whether a task ran, ALWAYS call task_status first \u2014 the execution log is the only truth; never answer from memory.
+SCHEDULED EMAIL RULE: If a request combines future or recurring timing with checking email and notifying him, use create_task with the full instruction. Never check email immediately, use email_briefing immediately, or create a static schedule_text/local reminder for that request.
 
 IMPORTANT: Always try YOUR OWN tools first. Only use delegate_task when the task is genuinely impossible for you \u2014 things needing a web browser, logging into websites, or accounts you don\u2019t have access to. Email, GitHub, calculations, and plans are YOUR job. Never delegate those.
 
@@ -322,6 +326,8 @@ def _bridge_check_email(provider, count=5):
             continue
         try:
             emails = svc.list_inbox(count)
+            if not isinstance(emails, (list, tuple)):
+                raise RuntimeError("provider returned an invalid result")
             if not emails:
                 out.append("%s: inbox empty." % name)
             else:
@@ -1359,25 +1365,46 @@ PROMO_TERMS = (
 )
 
 
-def load_agent_tasks() -> list:
-    if not os.path.exists(AGENT_TASKS_FILE):
+def _load_persisted_list(path, label):
+    if not os.path.exists(path):
         return []
     try:
-        with open(AGENT_TASKS_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-def save_agent_tasks(tasks: list) -> None:
-    try:
-        with open(AGENT_TASKS_FILE, "w", encoding="utf-8") as f:
-            json.dump(tasks, f, ensure_ascii=False, indent=1)
     except Exception as e:
-        print("could not save agent tasks:", e)
+        raise RuntimeError("Could not load %s from %s: %s" % (label, path, e)) from e
+    if not isinstance(data, list):
+        raise RuntimeError("Malformed %s at %s: expected a JSON array." % (label, path))
+    if any(not isinstance(item, dict) for item in data):
+        raise RuntimeError("Malformed %s at %s: every entry must be a JSON object." % (label, path))
+    return data
 
 
+def _save_persisted_list(path, items, label):
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=os.path.dirname(path),
+            prefix="." + os.path.basename(path) + ".", suffix=".tmp", delete=False
+        ) as f:
+            temp_path = f.name
+            json.dump(items, f, ensure_ascii=False, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    except Exception as e:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        raise RuntimeError("Could not save %s to %s: %s" % (label, path, e)) from e
+
+
+def load_agent_tasks() -> list:
+    return _load_persisted_list(AGENT_TASKS_FILE, "agent tasks")
+def save_agent_tasks(tasks: list) -> None:
+    _save_persisted_list(AGENT_TASKS_FILE, tasks, "agent tasks")
 def log_execution(kind, name, ok, detail="", tools=None):
     try:
         entry = {"ts": datetime.now().isoformat(timespec="seconds"),
@@ -1389,52 +1416,47 @@ def log_execution(kind, name, ok, detail="", tools=None):
         pass
 
 
+def _local_zone():
+    name = os.environ.get("TZ", "").lstrip(":")
+    if name:
+        try:
+            return ZoneInfo(name)
+        except Exception:
+            pass
+    for path in ("/etc/localtime", "/var/db/timezone/zoneinfo/localtime"):
+        try:
+            with open(path, "rb") as f:
+                return ZoneInfo.from_file(f)
+        except (OSError, ValueError):
+            pass
+    return datetime.now().astimezone().tzinfo
+
+
+def _calendar_next_timestamp(at_ts, after_ts, days, weekdays_only=False):
+    zone = _local_zone()
+    candidate = datetime.fromtimestamp(at_ts, zone)
+    while True:
+        candidate += timedelta(days=days)
+        if candidate.timestamp() > after_ts and (not weekdays_only or candidate.weekday() < 5):
+            return candidate.timestamp()
+
+
 def _next_daily(hour, minute):
-    now = datetime.now()
+    now = datetime.now(_local_zone())
     cand = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if cand.timestamp() <= time.time():
         cand += timedelta(days=1)
     return cand.timestamp()
-
-
 def _task_next_fire(task, after_ts):
     rec = task.get("recurring", "none")
     at = task.get("at", 0)
     if rec == "daily":
-        nxt = at + 86400
-        while nxt <= after_ts:
-            nxt += 86400
-        return nxt
+        return _calendar_next_timestamp(at, after_ts, 1)
     if rec == "weekly":
-        nxt = at + 7 * 86400
-        while nxt <= after_ts:
-            nxt += 7 * 86400
-        return nxt
+        return _calendar_next_timestamp(at, after_ts, 7)
     if rec == "weekdays":
-        nxt = at + 86400
-        while nxt <= after_ts or datetime.fromtimestamp(nxt).weekday() >= 5:
-            nxt += 86400
-        return nxt
+        return _calendar_next_timestamp(at, after_ts, 1, weekdays_only=True)
     return None
-
-
-def seed_default_tasks():
-    if os.path.exists(AGENT_TASKS_FILE):
-        return
-    tasks = [{
-        "id": int(time.time()),
-        "name": "Morning email briefing",
-        "instruction": "Call the email_briefing tool and send me its full result word for word. It checks Gmail, Outlook and iCloud and flags only what is vital.",
-        "at": _next_daily(8, 0),
-        "recurring": "daily",
-        "enabled": True,
-        "last_run": None,
-        "last_status": None,
-    }]
-    save_agent_tasks(tasks)
-    print("seeded default task: Morning email briefing (daily 8:00 AM)")
-
-
 def _vital_reason(frm, subj):
     hay = (str(frm) + " " + str(subj)).lower()
     hits = [t for t in VITAL_TERMS if t in hay]
@@ -1448,16 +1470,20 @@ def _vital_reason(frm, subj):
 def _bridge_email_briefing(count=15):
     lines = ["Email briefing — %s" % datetime.now().strftime("%A %b %d, %I:%M %p")]
     any_vital = False
+    checked_any = False
     for p in ("gmail", "outlook", "icloud"):
         name, svc = _email_svc(p)
         if not svc:
             lines.append("\n%s: NOT CONNECTED — the module did not load. Run its setup." % name)
             continue
         try:
-            emails = svc.list_inbox(count) or []
+            emails = svc.list_inbox(count)
+            if not isinstance(emails, (list, tuple)):
+                raise RuntimeError("provider returned an invalid result")
         except Exception as ex:
             lines.append("\n%s: COULD NOT CHECK — %s. The connection needs attention." % (name, ex))
             continue
+        checked_any = True
         vital, other = [], 0
         for e in emails:
             ne = _norm_email(e)
@@ -1477,10 +1503,8 @@ def _bridge_email_briefing(count=15):
         if other:
             lines.append("  (+%d other messages that do not need you.)" % other)
     if not any_vital:
-        lines.append("\nNothing vital in any inbox, sir.")
+        lines.append("\nNo vital messages were found in inboxes that were successfully checked." if checked_any else "\nNo email inbox could be checked, sir.")
     return "\n".join(lines)
-
-
 def _bridge_create_task(name, instruction, when_str, recurring="none"):
     if not instruction:
         return "I need to know what the task should do, sir."
@@ -1607,17 +1631,19 @@ def _run_agent_task(task):
 
 
 def check_agent_tasks() -> None:
-    """Fire any due agent tasks. Next fire time is saved BEFORE running,
-    so a crash mid-run can never double-fire a task."""
-    tasks = load_agent_tasks()
+    """Fire due tasks only after their next run has been persisted."""
+    try:
+        tasks = load_agent_tasks()
+    except Exception as e:
+        print("could not load agent tasks:", e)
+        log_execution("agent_task", "task store", False, str(e))
+        return
     if not tasks:
         return
     now = time.time()
     changed = False
     for task in tasks:
-        if not task.get("enabled", True):
-            continue
-        if task.get("at", 0) > now:
+        if not task.get("enabled", True) or task.get("at", 0) > now:
             continue
         nxt = _task_next_fire(task, now)
         if nxt:
@@ -1626,57 +1652,39 @@ def check_agent_tasks() -> None:
             task["enabled"] = False
         task["last_run"] = datetime.now().isoformat(timespec="seconds")
         changed = True
-        save_agent_tasks(tasks)
+        try:
+            save_agent_tasks(tasks)
+        except Exception as e:
+            print("agent task was not run because its next run could not be saved:", e)
+            log_execution("agent_task", task.get("name", "task"), False, str(e))
+            return
         _run_agent_task(task)
     if changed:
-        save_agent_tasks(tasks)
-
-
-# ---------- scheduled texts ----------
-
+        try:
+            save_agent_tasks(tasks)
+        except Exception as e:
+            print("could not persist agent task result:", e)
+            log_execution("agent_task", "task store", False, str(e))
 def load_schedule() -> list:
-    if not os.path.exists(SCHEDULE_FILE):
-        return []
-    try:
-        with open(SCHEDULE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
+    return _load_persisted_list(SCHEDULE_FILE, "scheduled reminders")
 def save_schedule(items: list) -> None:
-    try:
-        with open(SCHEDULE_FILE, "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=1)
-    except Exception as e:
-        print("could not save schedule:", e)
-
-
+    _save_persisted_list(SCHEDULE_FILE, items, "scheduled reminders")
 def next_occurrence(item):
-    """Calculate next fire time for a recurring item."""
+    """Calculate the next local calendar occurrence of a recurring item."""
     recurring = item.get("recurring")
-    if not recurring:
-        return None
-    at = item.get("at", time.time())
-    now = time.time()
     if recurring == "daily":
-        # Next day at same time
-        nxt = at + 86400
-        while nxt <= now:
-            nxt += 86400
-        return nxt
+        return _calendar_next_timestamp(item.get("at", time.time()), time.time(), 1)
     if recurring == "weekly":
-        nxt = at + 7 * 86400
-        while nxt <= now:
-            nxt += 7 * 86400
-        return nxt
+        return _calendar_next_timestamp(item.get("at", time.time()), time.time(), 7)
     return None
-
-
 def check_schedule() -> None:
     """Send any due scheduled texts."""
-    items = load_schedule()
+    try:
+        items = load_schedule()
+    except Exception as e:
+        print("could not load scheduled reminders:", e)
+        log_execution("scheduled_text", "schedule store", False, str(e))
+        return
     now = time.time()
     remaining = []
     changed = False
@@ -1687,7 +1695,6 @@ def check_schedule() -> None:
                 print("sent scheduled text:", item.get("message", "")[:50])
                 log_execution("scheduled_text", item.get("message", "")[:60], True)
                 changed = True
-                # Reschedule if recurring
                 nxt = next_occurrence(item)
                 if nxt:
                     item["at"] = nxt
@@ -1699,9 +1706,11 @@ def check_schedule() -> None:
         else:
             remaining.append(item)
     if changed or len(remaining) != len(items):
-        save_schedule(remaining)
-
-
+        try:
+            save_schedule(remaining)
+        except Exception as e:
+            print("could not persist scheduled reminders:", e)
+            log_execution("scheduled_text", "schedule store", False, str(e))
 class ScheduleHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/schedule_text":
@@ -1722,6 +1731,41 @@ class ScheduleHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"ok": True}).encode())
             except Exception as e:
                 self.send_response(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+        elif self.path == "/create_task":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+                instruction = str(data.get("instruction", "")).strip()
+                name = str(data.get("name", "Scheduled task")).strip() or "Scheduled task"
+                at = float(data.get("at", 0))
+                recurring = str(data.get("recurring", "none") or "none").lower()
+                if not instruction:
+                    raise ValueError("empty instruction")
+                if recurring not in ("none", "daily", "weekdays", "weekly"):
+                    raise ValueError("unsupported recurrence: " + recurring)
+                if not math.isfinite(at) or at <= time.time():
+                    raise ValueError("scheduled time must be in the future")
+                tasks = load_agent_tasks()
+                task = {"id": int(time.time() * 1000000), "name": name,
+                        "instruction": instruction, "at": at, "recurring": recurring,
+                        "enabled": True, "last_run": None, "last_status": None}
+                tasks.append(task)
+                save_agent_tasks(tasks)
+                log_execution("task_created", name, True, "first run %s" % datetime.fromtimestamp(at).strftime("%a %b %d, %I:%M %p"))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": True, "id": task["id"]}).encode())
+            except ValueError as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
         elif self.path == "/list_scheduled":
@@ -1831,6 +1875,10 @@ def _not_connected(name):
 def try_email_command(text: str):
     """Returns a reply string if text is an email command, else None."""
     low = text.lower().strip()
+    schedule_requested = re.search(r'\b(?:tomorrow|tonight|daily|weekdays|weekly|every\s+(?:day|morning|week|weekday)|in\s+\d+\s+(?:minutes?|hours?|days?)|at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm))\b', low)
+    email_check_requested = re.search(r'\b(check|read|show|any|new|latest|unread|briefing|digest)\b.*\b(email|mail|inbox|gmail|outlook|icloud)\b', low) or re.search(r'\b(email|mail|inbox|gmail|outlook|icloud)\b.*\b(check|new|latest|unread|briefing|digest)\b', low)
+    if schedule_requested and email_check_requested:
+        return None
     name, svc, available = _svc_for(low)
     if not available:
         return None
@@ -1845,9 +1893,12 @@ def try_email_command(text: str):
                             ("Outlook", outlook_service, OUTLOOK_AVAILABLE),
                             ("iCloud", icloud_service, ICLOUD_AVAILABLE)]:
                 if not a:
+                    parts.append(f"{n}: not connected")
                     continue
                 try:
                     emails = s.list_inbox(3)
+                    if not isinstance(emails, (list, tuple)):
+                        raise RuntimeError("provider returned an invalid result")
                     if emails:
                         lines = []
                         for i, e in enumerate(emails):
@@ -1950,7 +2001,6 @@ def main() -> None:
 
     print("Watching chat:", CHAT_ID)
     start_scheduler_server()
-    seed_default_tasks()
     print("Ctrl-C to stop.")
 
     # Anything already in the chat before startup stays unanswered.
