@@ -140,8 +140,12 @@ final class ToolService {
             guard await GoogleAuthService.shared.isSignedIn else {
                 return "Gmail not connected. Connect in Settings first."
             }
-            let emails = await GmailClient.shared.listInbox()
-            return await GmailClient.shared.formatList(emails)
+            do {
+                let emails = try await GmailClient.shared.listInbox()
+                return await GmailClient.shared.formatList(emails)
+            } catch {
+                return "Couldn't check Gmail: \(error.localizedDescription)"
+            }
         case "get_briefing":
             return await BriefingService.shared.build()
         case "github_list_repos":
