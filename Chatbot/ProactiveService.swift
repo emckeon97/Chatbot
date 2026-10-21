@@ -132,6 +132,8 @@ final class ProactiveService: ObservableObject {
             if let morning = Calendar.current.date(from: components) {
                 date = morning < Date() ? Calendar.current.date(byAdding: .day, value: 1, to: morning) : morning
             }
+        } else if lower.contains("tomorrow") {
+            date = Calendar.current.date(byAdding: .day, value: 1, to: Date())
         }
         guard let targetDate = date else { return nil }
 
