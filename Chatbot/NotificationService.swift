@@ -48,7 +48,7 @@ final class NotificationService: ObservableObject {
     }
 
     /// Schedule a notification for a future date.
-    func schedule(title: String, body: String, at date: Date, repeats: Bool = false) async throws {
+    func schedule(title: String, body: String, at date: Date, recurring: String? = nil) async throws {
         guard isAuthorized else { throw NotificationError.notAuthorized }
         let content = UNMutableNotificationContent()
         content.title = title
@@ -56,9 +56,11 @@ final class NotificationService: ObservableObject {
         content.sound = .default
 
         let trigger: UNNotificationTrigger
-        if repeats {
-            // Daily repeat at same time
-            let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        if let recurring {
+            var components = Calendar.current.dateComponents([.hour, .minute], from: date)
+            if recurring == "weekly" {
+                components.weekday = Calendar.current.component(.weekday, from: date)
+            }
             trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
         } else {
             let components = Calendar.current.dateComponents(
