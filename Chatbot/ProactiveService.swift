@@ -160,7 +160,7 @@ final class ProactiveService: ObservableObject {
     }
 
     private func parseAtTime(in text: String) -> Date? {
-        // Simple "at 9am" / "at 2:30pm" parser
+        // Parse a local clock time, honoring an explicit today or tomorrow.
         let pattern = #"at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else {
@@ -175,23 +175,21 @@ final class ProactiveService: ObservableObject {
         }
         guard let ampmRange = Range(match.range(at: 3), in: text) else { return nil }
         let ampm = String(text[ampmRange])
-        var h = hour
-        if ampm == "pm", h != 12 { h += 12 }
-        if ampm == "am", h == 12 { h = 0 }
+        var hour24 = hour
+        if ampm == "pm", hour24 != 12 { hour24 += 12 }
+        if ampm == "am", hour24 == 12 { hour24 = 0 }
 
-        var components = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        components.hour = h
+        let calendar = Calendar.current
+        let now = Date()
+        let dayOffset = text.contains("tomorrow") ? 1 : 0
+        let baseDate = calendar.date(byAdding: .day, value: dayOffset, to: now) ?? now
+        var components = calendar.dateComponents([.year, .month, .day], from: baseDate)
+        components.hour = hour24
         components.minute = minute
-        guard var date = Calendar.current.date(from: components) else { return nil }
-        // If time already passed today, schedule for tomorrow
-        if date < Date() {
-            date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
-        }
-        // If "tomorrow" explicitly mentioned, push to tomorrow
-        if text.contains("tomorrow") {
-            if let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: date) {
-                return tomorrowDate
-            }
+        guard let date = calendar.date(from: components) else { return nil }
+
+        if !text.contains("today"), !text.contains("tomorrow"), date < now {
+            return calendar.date(byAdding: .day, value: 1, to: date) ?? date
         }
         return date
     }
